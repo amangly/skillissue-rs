@@ -1,0 +1,33 @@
+[workspace]
+members = ["apps/skillissue-desktop", "crates/skillissue-core", "crates/skillissue-domain", "crates/skillissue-platform", "xtask"]
+exclude = ["vendor/gpui-pre-windows"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+authors = ["amangly"]
+repository = "https://github.com/amangly/skillissue-rs"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+global-hotkey = "=0.8.0"
+skillissue-domain = { path = "crates/skillissue-domain" }
+skillissue-core = { path = "crates/skillissue-core" }
+skillissue-platform = { path = "crates/skillissue-platform" }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+strip = true
+
+[profile.dev]
+debug = 0
+
+
+[patch.crates-io]
+gpui-pre-windows = { path = "vendor/gpui-pre-windows" }

@@ -1,0 +1,17 @@
+{
+  "package": "profiling",
+  "version": "1.0.18",
+  "commit": "8271551172eb6fa4cba47369aedd93790c623df9",
+  "files": [
+    {
+      "file": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-APACHE",
+      "sha256": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551"
+    },
+    {
+      "file": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT",
+      "sha256": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333"
+    }
+  ]
+}

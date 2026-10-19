@@ -1,0 +1,12 @@
+{
+  "package": "taffy",
+  "version": "0.13.0",
+  "commit": "45a56299d366ddb383e593a1f0372158d00e8530",
+  "files": [
+    {
+      "file": "LICENSE",
+      "url": "https://raw.githubusercontent.com/DioxusLabs/taffy/45a56299d366ddb383e593a1f0372158d00e8530/LICENSE",
+      "sha256": "f97daf1a0124413dccf399a4e6626b4b74acd05282f80b6d64ac82225650b77a"
+    }
+  ]
+}

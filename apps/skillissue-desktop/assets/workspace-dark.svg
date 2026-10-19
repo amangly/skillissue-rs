@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="800" viewBox="0 0 1100 800" preserveAspectRatio="xMidYMid slice">
+  <title>skillissue workspace background — dark</title>
+  <rect width="1100" height="800" fill="#172236"/>
+  <path d="M610 0H1100V800H260Z" fill="#182b45"/>
+  <g fill="none" stroke="#91abc9" stroke-width="1" opacity=".12">
+    <path d="M810-80 440 800M870-80 500 800M930-80 560 800"/>
+    <path d="M0 680H1100M0 728H1100M0 776H1100"/>
+  </g>
+  <g fill="#91abc9" opacity=".12">
+    <rect x="48" y="48" width="4" height="4"/><rect x="64" y="48" width="4" height="4"/>
+    <rect x="48" y="64" width="4" height="4"/><rect x="64" y="64" width="4" height="4"/>
+  </g>
+</svg>

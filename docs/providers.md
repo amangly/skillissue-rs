@@ -1,0 +1,143 @@
+# Provider connections
+
+The application has one local session engine and two provider modes. Selecting a
+provider never uploads previous sessions by itself.
+
+See [BYOK setup roadmap](byok-roadmap.md) for the Terax source comparison,
+completed input improvements and prioritized onboarding work.
+
+| Operation | BYOK | Palepale |
+| --- | --- | --- |
+| Chat and notes | Configured Chat Completions endpoint | Fixed hosted Chat Completions endpoint with metered SSE |
+| Models | Manual IDs or filtered results from explicit model-list checks | Public catalog with published capability checks |
+| Authentication | Endpoint-scoped provider key | Browser-approved device pairing |
+| Transcription | Multipart `/audio/transcriptions`, optional separate URL/key or chat-only mode | Independent published audio model |
+| Screenshots | Provider must accept image input | Published image capability required |
+| Smart effort | Low/High reasoning on supported Text and Images models | Published reasoning efforts required |
+
+Palepale pairing exposes only a short public approval code to the browser. The
+private device code and released credential remain in the native process. Approved
+credentials are saved in Windows Credential Manager; interrupted activation uses a
+separate pending scope and never becomes active automatically.
+
+Settings reports a hosted connection as ready only after a usable committed model
+and an authenticated, read-only account availability check. Public catalog data is
+not proof of entitlement, credit, or successful inference.
+
+Connection, model, and credential changes wait for active recording, accepted
+requests, notes, and pending transcription to finish. Appearance and other
+unrelated preferences can still be saved during an answer. Requests retain the
+provider and session snapshot they were prepared with.
+
+### Palepale account and usage
+
+AI Providers projects the server's authenticated `GET /api/me` response into
+wallet availability, reservations, lifetime wallet spending limit, balance fallback,
+and active passes. Pass bars show remaining allowance after reservations, with
+expiry and full-refill timestamps as supplied by the server. Pass allowances and
+wallet balances remain separate; a pass is not presented as an auto-renewing subscription.
+
+`GET /api/me/overview?days=0` supplies all-time, account-wide request counts,
+charged microdollars, unresolved requests, input/output tokens, cached input,
+and reasoning tokens. The chart compares input and output on the same scale;
+cached and reasoning tokens are subsets, not additional totals. Amounts retain
+six decimal places. Missing data is unavailable, never fabricated as zero.
+The compact panel uses GPUI bar charts for tokens and progress indicators for
+pass allowance and wallet limits. Details expands exact token counts, pass dates,
+reservations, scope, and wallet fallback.
+
+Refresh status reloads both snapshots. The main settings window also refreshes
+about once a minute while AI Providers is visible. Results sync to the overlay,
+and connection changes discard stale results. Usage failures do not erase a
+successful account check. Account IDs, key hints, and pass IDs are not retained
+in the UI projection. The panel reports the last completed refresh, not a live
+billing stream. This contract was checked against the local palepale-server
+controllers, account service, and usage repository; deployed authenticated
+responses still require live acceptance.
+
+Failed chat POSTs are not automatically replayed, even when no answer text has
+arrived: the provider may already have accepted and billed the request. Automatic
+recovery needs a provider-supported idempotency or stream-resume contract.
+
+No provider key is written to settings JSON, history, catalog requests, UI events,
+or logs. The default profile may use `SKILLISSUE_API_KEY` as a BYOK compatibility
+fallback; non-default profiles and Palepale never use that environment variable.
+
+Connecting Palepale, refreshing status, or reopening a connected profile can fetch
+its public catalog and authenticated account availability. Recording sends audio
+segments; Ask and notes send the selected context to the configured provider.
+Smart changes reasoning effort for the selected model. Provider
+retention, billing, and privacy terms apply to these requests; review them before
+connecting or enabling capture. There is no analytics or automatic update service.
+
+## BYOK setup
+
+Choose a provider and paste its key in each row, then Save:
+
+- **Text:** answers and notes.
+- **Audio:** microphone and system audio transcription. Choose OpenAI, Groq,
+  Gemini, Mistral, OpenRouter, a custom speech service, Use text provider, or Off.
+- **Images:** screenshot questions. Choose OpenAI, Anthropic, Gemini, DeepSeek,
+  Groq, Mistral, OpenRouter, a custom image-capable service, Use text provider, or Off.
+
+Common cloud presets fill the URL and a starter model. Advanced contains URLs,
+model overrides, connection checks, key removal and the system prompt. Each row
+also has a Model dropdown and Test button. Saving BYOK automatically loads
+model lists for enabled roles; Refresh models retries discovery. Lists stay scoped to their role and endpoint; they are
+filtered by input/output modalities and provider capability fields. Missing
+metadata falls back to exact reviewed preset IDs present in the response;
+unknown models stay out of role dropdowns. Custom IDs remain in Advanced.
+OpenRouter Audio fetches its transcription catalog. Audio chat models are only
+offered where the app has an audio-chat adapter. Large lists have a filter. Shared Images
+uses the Text model, so changing its dropdown also changes Text. Local
+servers and providers without a starter model need a model ID in Advanced.
+Preset models may require account access or a model change.
+
+Test sends a small request to the saved provider and selected model. Text uses
+a fixed prompt, Images adds a generated test PNG, and Audio uses half a second
+of synthetic silence. No saved conversation or captured media is sent. Tests
+may use API credits. Success means the sample request was accepted; it does not
+measure transcription accuracy or image understanding. Changes and cancellation
+discard stale results. Requests time out after 30 seconds.
+
+A separate Images provider receives the screenshot and question context and
+answers that request. Text-only questions and notes keep using Text. Images
+means screenshot understanding, not image generation. Smart stays visible in the
+composer. Enable it and click Low effort / High effort to change the shared setting
+for Text and Images. Off leaves the provider default unchanged. Notes and audio
+transcription do not use this control. Smart no longer starts web research.
+
+OpenAI reasoning models and Gemini thinking models use `reasoning_effort`.
+DeepSeek Flash/V4 also enables thinking. Reviewed Claude 4.5/4.6 models use a
+2,048/8,192-token thinking budget, with 16,384 maximum output tokens; their
+compatibility endpoint ignores `reasoning_effort`. OpenRouter requests reasoning
+and requires parameter support. Custom compatible endpoints receive
+`reasoning_effort` and must validate it. Unsupported preset/model combinations
+fail before sending; model names never silently change to enable Smart.
+Palepale checks published efforts and skips automatic model routing while Smart
+is enabled. Higher effort can increase latency and token use.
+
+Parameter references: [OpenAI](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create),
+[Gemini](https://ai.google.dev/gemini-api/docs/openai),
+[DeepSeek](https://api-docs.deepseek.com/guides/thinking_mode/),
+[Claude](https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk),
+[OpenRouter](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
+
+Blank keys keep saved keys. A masked saved-key label remains visible after saving;
+replacement keys and pending removal have separate labels. Saved secrets are
+never copied into input values. Use text provider shares the Text key without copying
+it into another field. Separate Audio and Images keys have independent scopes,
+even if their URLs match Text. Switching providers keeps unfinished keys with
+their original endpoint while the form is open. Keys never sync into other windows.
+
+Saved configuration updates the dashboard, overlay and settings tabs. Unsaved
+form fields survive tab switches and background updates. Saves wait for active
+requests and recording; failed saves preserve drafts and roll back key changes.
+
+Advanced connection checks send only a model-list request. A successful response
+does not prove model access, credit, image or audio support. Checks never send
+meeting content or paid inference. Editing or cancelling invalidates results.
+
+See the [provider compatibility matrix](byok-compatibility.md) for provider-specific
+limits. The default profile can use `SKILLISSUE_API_KEY` for Text; separate Audio
+and Images connections never use that environment fallback.

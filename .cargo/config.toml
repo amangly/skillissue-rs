@@ -1,0 +1,16 @@
+# Keep the default compiler and build flags unchanged so incremental caches are shared.
+[alias]
+desktop = "run --locked -p skillissue-desktop"
+desktop-build = "build --locked --release -p skillissue-desktop"
+upload = "run --locked -p xtask -- upload"
+installer = "run --locked -p xtask -- installer"
+# Version edits may need Cargo to refresh workspace entries before the task starts.
+app-version = "run -p xtask -- version"
+core-check = "check --locked -p skillissue-core -p skillissue-domain"
+core-test = "test --locked -p skillissue-core -p skillissue-domain"
+platform-check = "check --locked -p skillissue-platform"
+platform-test = "test --locked -p skillissue-platform"
+desktop-check = "check --locked -p skillissue-desktop --features ui-review"
+desktop-test = "test --locked -p skillissue-desktop --features ui-review"
+lint = "clippy --workspace --all-targets --features skillissue-desktop/ui-review --locked -- -D warnings"
+verify = "test --workspace --features skillissue-desktop/ui-review --locked -- --test-threads=1"
