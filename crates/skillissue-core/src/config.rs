@@ -107,7 +107,9 @@ pub fn validate(mut settings: Settings) -> Result<Settings, String> {
         ("Assistant model", &settings.chat_model),
         ("Transcription model", &settings.transcription_model),
     ] {
-        if (label == "Transcription model" && value.trim().is_empty())
+        if (label == "Transcription model"
+            && value.trim().is_empty()
+            && !Settings::hosted_endpoint(&settings.transcription_base_url))
             || value.len() > 200
             || value.chars().any(char::is_control)
         {
@@ -357,6 +359,18 @@ mod tests {
                 size: 20 * 1024 * 1024,
             }],
         }
+    }
+
+    #[test]
+    fn hosted_audio_can_be_saved_before_model_discovery() {
+        let mut settings = Settings {
+            transcription_base_url: skillissue_domain::provider::PALEPALE_BASE_URL.into(),
+            transcription_model: String::new(),
+            ..Settings::default()
+        };
+        assert!(validate(settings.clone()).is_ok());
+        settings.transcription_base_url = "https://audio.example/v1".into();
+        assert!(validate(settings).is_err());
     }
 
     #[test]

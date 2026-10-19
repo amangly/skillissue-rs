@@ -1485,6 +1485,53 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn hosted_audio_selection_syncs_account_model_and_preserves_explicit_choice(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::ui::settings::connections::ConnectionRole;
+        use skillissue_domain::provider::ProviderModel;
+        let (handle, view, directory) = fixture(cx);
+        cx.update_window(handle, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.settings.palepale.transcription_model = "account-audio".into();
+                view.settings_ui.catalog_models = vec![
+                    ProviderModel {
+                        id: "text-only".into(),
+                        capabilities: skillissue_domain::provider::ModelCapabilities {
+                            streaming: true,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    ProviderModel {
+                        id: "account-audio".into(),
+                        capabilities: skillissue_domain::provider::ModelCapabilities {
+                            streaming: true,
+                            audio_input: true,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                ];
+                view.choose_connection(ConnectionRole::Audio, "palepale", window, cx);
+                assert_eq!(view.stt_model.read(cx).value().as_str(), "account-audio");
+                assert_eq!(
+                    view.settings_ui
+                        .connection_models
+                        .get(&(1, skillissue_domain::provider::PALEPALE_BASE_URL.into()))
+                        .unwrap(),
+                    &["account-audio"]
+                );
+                view.select_connection_model(ConnectionRole::Audio, "user-choice", window, cx);
+                view.sync_hosted_connections(window, cx);
+                assert_eq!(view.stt_model.read(cx).value().as_str(), "user-choice");
+            });
+        })
+        .unwrap();
+        assert!(!directory.exists());
+    }
+
+    #[gpui_kit::test]
     fn compact_roles_preserve_drafts_and_sync_clean_fields_across_tabs(cx: &mut TestAppContext) {
         use crate::ui::settings::connections::ConnectionRole;
         let (handle, view, directory) = fixture(cx);

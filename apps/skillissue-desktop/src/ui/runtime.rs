@@ -559,6 +559,7 @@ impl NativeView {
                         self.set_config(config, window, cx);
                     }
                     if current {
+                        self.sync_hosted_connections(window, cx);
                         self.sync_provider_status_to_overlay(cx);
                     }
                 }

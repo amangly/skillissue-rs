@@ -25,6 +25,62 @@ impl ConnectionRole {
     }
 }
 impl NativeView {
+    pub(in crate::ui) fn sync_hosted_connections(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.settings_ui.catalog_error.is_some() {
+            return;
+        }
+        for role in [
+            ConnectionRole::Text,
+            ConnectionRole::Audio,
+            ConnectionRole::Images,
+        ] {
+            let models: Vec<String> = self
+                .settings_ui
+                .catalog_models
+                .iter()
+                .filter(|model| {
+                    model.capabilities.streaming
+                        && match role {
+                            ConnectionRole::Audio => model.capabilities.audio_input,
+                            ConnectionRole::Images => model.capabilities.image_input,
+                            ConnectionRole::Text => true,
+                        }
+                })
+                .map(|model| model.id.clone())
+                .collect();
+            let (endpoint, input, _) = self.connection_inputs(role);
+            self.settings_ui.connection_models.insert(
+                (
+                    role.id(),
+                    skillissue_domain::provider::PALEPALE_BASE_URL.into(),
+                ),
+                models.clone(),
+            );
+            if !Settings::hosted_endpoint(endpoint.read(cx).value().as_str())
+                || !input.read(cx).value().is_empty()
+            {
+                continue;
+            }
+            let preferred = if role == ConnectionRole::Audio {
+                &self.settings.palepale.transcription_model
+            } else {
+                &self.settings.palepale.chat_model
+            };
+            if let Some(selected) = models
+                .iter()
+                .find(|id| *id == preferred)
+                .or_else(|| models.first())
+                .cloned()
+            {
+                self.select_connection_model(role, &selected, window, cx);
+            }
+        }
+    }
+
     pub(super) fn connection_key_label(&self, role: ConnectionRole, cx: &App) -> &'static str {
         let (endpoint, _, key) = self.connection_inputs(role);
         if !key.read(cx).value().is_empty() {
@@ -395,6 +451,10 @@ impl NativeView {
         if provider.is_some() && default.is_none() {
             self.settings_ui.byok_advanced = true;
         }
+        if choice == "palepale" {
+            self.sync_hosted_connections(window, cx);
+            self.refresh_palepale_catalog(cx);
+        }
         cx.notify();
     }
 
@@ -461,7 +521,7 @@ impl NativeView {
         if enabled && Settings::hosted_endpoint(&url) {
             row = row
                 .child(caption(
-                    "Uses your connected Palepale account. Save, then load models.",
+                    "Uses your connected Palepale account. Models sync automatically.",
                     p,
                 ))
                 .child(

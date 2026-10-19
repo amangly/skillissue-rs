@@ -5,8 +5,11 @@ provider never uploads previous sessions by itself.
 
 BYOK also offers **Palepale account** independently for Text, Audio, and Images.
 Connect Palepale once, return to BYOK, then select it for the roles you want.
-For example, keep DeepSeek for Text and use Palepale for Audio. Save the selection
-and load models. Palepale rows share the paired account credential and use its
+For example, keep DeepSeek for Text and use Palepale for Audio. Selecting Palepale
+loads its role-compatible models automatically and fills an empty model selection
+from the account's saved model when compatible, otherwise from the available list.
+Save to apply the selection. Existing model choices are preserved.
+Palepale rows share the paired account credential and use its
 published model capabilities; other rows keep their own provider keys.
 
 See [BYOK setup roadmap](byok-roadmap.md) for the Terax source comparison,
