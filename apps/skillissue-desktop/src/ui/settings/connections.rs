@@ -316,7 +316,11 @@ impl NativeView {
             ),
         );
         let provider = BYOK_PROVIDERS.iter().find(|p| p.id == choice);
-        let url = provider.map_or("", |p| p.base_url);
+        let url = if choice == "palepale" {
+            skillissue_domain::provider::PALEPALE_BASE_URL
+        } else {
+            provider.map_or("", |p| p.base_url)
+        };
         let default = provider.and_then(|p| {
             if role == ConnectionRole::Audio {
                 p.transcription_model
@@ -403,6 +407,8 @@ impl NativeView {
         let provider = byok_provider(&url);
         let name = if !enabled {
             "Off"
+        } else if Settings::hosted_endpoint(&url) {
+            "Palepale account"
         } else if shared {
             "Use text provider"
         } else {
@@ -418,6 +424,7 @@ impl NativeView {
         .disabled(pending)
         .dropdown_menu(move |mut menu, _, _| {
             let mut choices: Vec<(&'static str, &'static str)> = Vec::new();
+            choices.push(("Palepale account", "palepale"));
             if role != ConnectionRole::Text {
                 choices.extend([("Off", "off"), ("Use text provider", "shared")]);
             }
@@ -451,7 +458,24 @@ impl NativeView {
                         .child(picker),
                 ),
         );
-        if enabled && !shared {
+        if enabled && Settings::hosted_endpoint(&url) {
+            row = row
+                .child(caption(
+                    "Uses your connected Palepale account. Save, then load models.",
+                    p,
+                ))
+                .child(
+                    settings_action(
+                        SharedString::from(format!("connection-palepale-{}", role.id())),
+                        "Connect Palepale",
+                        p,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.select_provider_mode(ProviderMode::Palepale, cx)
+                    })),
+                );
+        }
+        if enabled && !shared && !Settings::hosted_endpoint(&url) {
             row = row
                 .child(
                     div()

@@ -1612,6 +1612,81 @@ impl credentials::Credentials for ByokTestCredentials {
 }
 
 #[tokio::test]
+async fn mixed_hosted_roles_share_account_and_clear_on_disconnect() {
+    let fixture = Fixture::new("http://127.0.0.1:43112/v1");
+    let engine = NativeEngine::open_with_credentials(
+        fixture.0.clone(),
+        Arc::new(ByokTestCredentials::default()),
+    )
+    .unwrap();
+    engine
+        .update_configuration(
+            |s| {
+                s.provider_mode = ProviderMode::Palepale;
+                s.transcription_base_url = skillissue_domain::provider::PALEPALE_BASE_URL.into();
+                s.image_base_url = skillissue_domain::provider::PALEPALE_BASE_URL.into();
+                s.image_model = "hosted-image".into();
+                s.transcription_model = "hosted-audio".into();
+                Ok(())
+            },
+            Some("account-test-key".into()),
+        )
+        .unwrap();
+    engine
+        .update_configuration(
+            |s| {
+                s.provider_mode = ProviderMode::Byok;
+                Ok(())
+            },
+            Some("text-test-key".into()),
+        )
+        .unwrap();
+    let audio = lock(&engine.configuration)
+        .unwrap()
+        .transcription_configuration()
+        .unwrap();
+    assert!(audio.0.is_palepale());
+    assert_eq!(audio.0.provider_transcription_model(), "hosted-audio");
+    assert_eq!(audio.1, "account-test-key");
+    let image = engine.image_configuration().unwrap();
+    assert!(image.0.is_palepale());
+    assert_eq!(image.0.palepale.chat_model, "hosted-image");
+    assert_eq!(image.1, "account-test-key");
+    assert_eq!(engine.provider_configuration().unwrap().1, "text-test-key");
+    assert!(
+        engine
+            .update_byok_configuration(|_| Ok(()), None, Some("overwrite".into()))
+            .is_err()
+    );
+    engine
+        .update_configuration(
+            |s| {
+                s.provider_mode = ProviderMode::Palepale;
+                Ok(())
+            },
+            Some(String::new()),
+        )
+        .unwrap();
+    engine
+        .update_configuration(
+            |s| {
+                s.provider_mode = ProviderMode::Byok;
+                Ok(())
+            },
+            None,
+        )
+        .unwrap();
+    assert!(engine.image_configuration().is_err());
+    assert!(
+        lock(&engine.configuration)
+            .unwrap()
+            .transcription_configuration()
+            .is_err()
+    );
+    assert_eq!(engine.provider_configuration().unwrap().1, "text-test-key");
+}
+
+#[tokio::test]
 async fn byok_audio_credentials_are_isolated_atomic_and_survive_restart() {
     let fixture = Fixture::new("http://127.0.0.1:43112/v1");
     let credentials = Arc::new(ByokTestCredentials::default());

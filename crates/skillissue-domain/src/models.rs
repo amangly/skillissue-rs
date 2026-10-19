@@ -89,6 +89,20 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub fn hosted_endpoint(endpoint: &str) -> bool {
+        endpoint.trim_end_matches('/') == crate::provider::PALEPALE_BASE_URL.trim_end_matches('/')
+    }
+
+    /// Resolve a BYOK row to the hosted protocol without changing the saved global mode.
+    pub fn resolve_hosted_role(&mut self, audio: bool) {
+        if self.provider_mode == ProviderMode::Byok && Self::hosted_endpoint(&self.api_base_url) {
+            self.provider_mode = ProviderMode::Palepale;
+            self.palepale.chat_model = self.chat_model.clone();
+            if audio {
+                self.palepale.transcription_model = self.transcription_model.clone();
+            }
+        }
+    }
     pub fn provider_base_url(&self) -> &str {
         match self.provider_mode {
             ProviderMode::Byok => &self.api_base_url,

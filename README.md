@@ -23,7 +23,14 @@
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
-Bring your own API keys and choose your providers. Provider usage costs still apply.
+Use [Palepale](https://palepale.tech/), an affordable OpenAI-compatible API for
+coding tools and apps, or bring your own API keys (BYOK).
+
+In **Settings → AI providers → BYOK**, choose a provider and model for Text,
+Audio, and Images separately. For example, use DeepSeek for Text and Palepale for Audio.
+Palepale rows use your connected account; other providers use your saved API key.
+Compare input, cached input, and output rates on [Palepale](https://palepale.tech/),
+or explore its plans. Provider usage costs apply.
 
 ## Why I built this
 

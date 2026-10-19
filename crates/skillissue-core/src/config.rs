@@ -234,8 +234,11 @@ pub(crate) fn environment_key(base: &str) -> String {
 
 /// BYOK retains its historical URL scope; hosted credentials never share that scope.
 pub fn provider_credential_id(settings: &Settings) -> String {
-    if settings.is_palepale() {
-        format!("palepale:{}", settings.provider_base_url())
+    if settings.is_palepale() || Settings::hosted_endpoint(&settings.api_base_url) {
+        format!(
+            "palepale:{}",
+            skillissue_domain::provider::PALEPALE_BASE_URL
+        )
     } else {
         settings.api_base_url.clone()
     }
@@ -250,7 +253,7 @@ fn resolve_provider_key(
     saved: impl FnOnce(&str) -> Result<Option<String>, String>,
     byok: impl FnOnce(&str) -> Result<String, String>,
 ) -> Result<String, String> {
-    if settings.is_palepale() {
+    if settings.is_palepale() || Settings::hosted_endpoint(&settings.api_base_url) {
         Ok(saved(&provider_credential_id(settings))?.unwrap_or_default())
     } else {
         byok(&settings.api_base_url)
@@ -313,11 +316,23 @@ pub(crate) fn save_key_for_service(service: &str, base: &str, key: &str) -> Resu
 }
 
 pub fn image_credential_id(settings: &Settings) -> String {
+    if Settings::hosted_endpoint(&settings.image_base_url) {
+        return format!(
+            "palepale:{}",
+            skillissue_domain::provider::PALEPALE_BASE_URL
+        );
+    }
     format!("image:{}", settings.image_base_url)
 }
 
 /// Audio overrides never use the chat key or environment fallback.
 pub fn transcription_credential_id(settings: &Settings) -> String {
+    if Settings::hosted_endpoint(&settings.transcription_base_url) {
+        return format!(
+            "palepale:{}",
+            skillissue_domain::provider::PALEPALE_BASE_URL
+        );
+    }
     format!("transcription:{}", settings.transcription_base_url)
 }
 
@@ -501,7 +516,7 @@ mod tests {
     #[test]
     fn hosted_credentials_never_use_byok_url_scope_or_environment_fallback() {
         let mut settings = Settings {
-            api_base_url: skillissue_domain::provider::PALEPALE_BASE_URL.into(),
+            api_base_url: "https://byok.example/v1".into(),
             ..Settings::default()
         };
         assert_eq!(provider_credential_id(&settings), settings.api_base_url);
@@ -539,6 +554,21 @@ mod tests {
                 expected
             );
         }
+        settings.provider_mode = crate::models::ProviderMode::Byok;
+        settings.api_base_url = format!("{}/", skillissue_domain::provider::PALEPALE_BASE_URL);
+        assert_eq!(
+            provider_credential_id(&settings),
+            "palepale:https://api.palepale.tech/v1"
+        );
+        assert_eq!(
+            resolve_provider_key(
+                &settings,
+                |_| Ok(Some("account".into())),
+                |_| panic!("Hosted rows must not use environment keys")
+            )
+            .unwrap(),
+            "account"
+        );
     }
 
     #[test]

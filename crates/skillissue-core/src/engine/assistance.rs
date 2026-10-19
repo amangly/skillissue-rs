@@ -373,11 +373,12 @@ impl NativeEngine {
             return Err("Type a question, record some conversation, or add screen context.".into());
         }
         let mut request_settings = settings.clone();
-        let routed_model = if settings.smart_mode {
-            None
-        } else {
-            self.route_model(settings, plan.needs_image)
-        };
+        let routed_model =
+            if settings.smart_mode || Settings::hosted_endpoint(&settings.api_base_url) {
+                None
+            } else {
+                self.route_model(settings, plan.needs_image)
+            };
         if let Some(model) = routed_model.as_deref() {
             request_settings.palepale.chat_model = model.to_owned();
             request_settings.palepale.reasoning_effort = self

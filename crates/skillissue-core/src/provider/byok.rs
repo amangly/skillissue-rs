@@ -51,6 +51,21 @@ pub async fn test_byok(
         sample.system_prompt.clear();
         sample.active_mode_id = "general".into();
         sample.smart_mode = false;
+        if sample.is_palepale() {
+            super::stream_assist(
+                client,
+                &sample,
+                key,
+                "Reply with OK.",
+                "",
+                &[],
+                screenshot.as_deref(),
+                cancel.clone(),
+                |_| {},
+            )
+            .await?;
+            return Ok(());
+        }
         let mut body =
             super::chat::assist_body(&sample, "Reply with OK.", "", &[], screenshot.as_deref())?;
         body["stream"] = false.into();
@@ -106,6 +121,21 @@ pub async fn byok_role_models(
     role: u8,
     cancel: CancellationToken,
 ) -> Result<Vec<String>, String> {
+    if settings.is_palepale() || Settings::hosted_endpoint(settings.provider_base_url()) {
+        return Ok(super::palepale_models(client, cancel)
+            .await?
+            .into_iter()
+            .filter(|model| {
+                model.capabilities.streaming
+                    && match role {
+                        1 => model.capabilities.audio_input,
+                        2 => model.capabilities.image_input,
+                        _ => true,
+                    }
+            })
+            .map(|model| model.id)
+            .collect());
+    }
     model_list(client, settings, key, Some(role), cancel).await
 }
 

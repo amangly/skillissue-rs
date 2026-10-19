@@ -789,18 +789,19 @@ impl NativeView {
         let api_base_url = self.endpoint.read(cx).value().to_string();
         let image_base_url = self.settings_ui.image_endpoint.read(cx).value().to_string();
         let image_model = self.settings_ui.image_model.read(cx).value().to_string();
-        let image_key = if mode == ProviderMode::Palepale {
-            None
-        } else if self.settings_ui.remove_image_key {
-            Some(String::new())
-        } else {
-            let key = self.settings_ui.image_key.read(cx).value().to_string();
-            if key.trim().is_empty() {
+        let image_key =
+            if mode == ProviderMode::Palepale || Settings::hosted_endpoint(&image_base_url) {
                 None
+            } else if self.settings_ui.remove_image_key {
+                Some(String::new())
             } else {
-                Some(key)
-            }
-        };
+                let key = self.settings_ui.image_key.read(cx).value().to_string();
+                if key.trim().is_empty() {
+                    None
+                } else {
+                    Some(key)
+                }
+            };
         let audio_enabled = self.settings_ui.audio_enabled_draft;
         let image_enabled = self.settings_ui.image_enabled_draft;
         let transcription_base_url = self
@@ -809,7 +810,9 @@ impl NativeView {
             .read(cx)
             .value()
             .to_string();
-        let transcription_key = if mode == ProviderMode::Palepale {
+        let transcription_key = if mode == ProviderMode::Palepale
+            || Settings::hosted_endpoint(&transcription_base_url)
+        {
             None
         } else if self.settings_ui.remove_transcription_key {
             Some(String::new())
@@ -834,14 +837,15 @@ impl NativeView {
             .read(cx)
             .value()
             .to_string();
-        let (key, remove) = if mode == ProviderMode::Palepale {
-            (String::new(), false)
-        } else {
-            (
-                self.api_key.read(cx).value().to_string(),
-                self.settings_ui.remove_key,
-            )
-        };
+        let (key, remove) =
+            if mode == ProviderMode::Palepale || Settings::hosted_endpoint(&api_base_url) {
+                (String::new(), false)
+            } else {
+                (
+                    self.api_key.read(cx).value().to_string(),
+                    self.settings_ui.remove_key,
+                )
+            };
         self.invalidate_byok_check();
         self.settings_ui.provider_save_pending = true;
         self.error = None;

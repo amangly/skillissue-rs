@@ -19,6 +19,19 @@ impl NativeEngine {
         &self,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<Vec<ByokModelList>, String> {
+        let uses_hosted = {
+            let config = lock(&self.configuration)?;
+            [
+                &config.settings.api_base_url,
+                &config.settings.transcription_base_url,
+                &config.settings.image_base_url,
+            ]
+            .iter()
+            .any(|url| Settings::hosted_endpoint(url))
+        };
+        if uses_hosted {
+            self.palepale_models(cancel.clone()).await?;
+        }
         let (connections, revision) = {
             let config = lock(&self.configuration)?;
             if config.settings.is_palepale() {
@@ -217,6 +230,14 @@ impl NativeEngine {
         if image_key.is_some() && settings.image_base_url.is_empty() {
             return Err("Choose an image provider before saving its key.".into());
         }
+        if !settings.is_palepale()
+            && ((Settings::hosted_endpoint(&settings.api_base_url) && key.is_some())
+                || (Settings::hosted_endpoint(&settings.transcription_base_url)
+                    && transcription_key.is_some())
+                || (Settings::hosted_endpoint(&settings.image_base_url) && image_key.is_some()))
+        {
+            return Err("Palepale rows use the connected subscription. Connect or disconnect it in Palepale settings.".into());
+        }
         for value in [
             key.as_deref(),
             transcription_key.as_deref(),
@@ -287,9 +308,11 @@ impl NativeEngine {
         } else {
             None
         };
-        let next_audio_key = if let Some(key) = transcription_key.as_ref() {
+        let mut next_audio_key = if let Some(key) = transcription_key.as_ref() {
             key.trim().to_owned()
-        } else if settings.transcription_base_url == current.settings.transcription_base_url {
+        } else if settings.transcription_base_url == current.settings.transcription_base_url
+            && !Settings::hosted_endpoint(&settings.transcription_base_url)
+        {
             current.transcription_key.clone()
         } else if settings.transcription_base_url.is_empty() {
             String::new()
@@ -304,9 +327,11 @@ impl NativeEngine {
         } else {
             None
         };
-        let next_image_key = if let Some(key) = image_key.as_ref() {
+        let mut next_image_key = if let Some(key) = image_key.as_ref() {
             key.trim().to_owned()
-        } else if settings.image_base_url == current.settings.image_base_url {
+        } else if settings.image_base_url == current.settings.image_base_url
+            && !Settings::hosted_endpoint(&settings.image_base_url)
+        {
             current.image_key.clone()
         } else if settings.image_base_url.is_empty() {
             String::new()
@@ -324,6 +349,12 @@ impl NativeEngine {
         } else {
             self.credentials.load_provider(&settings)?
         };
+        if credential_changed && audio_scope == credential_id {
+            next_audio_key = next_key.clone();
+        }
+        if credential_changed && image_scope == credential_id {
+            next_image_key = next_key.clone();
+        }
         let commit = (|| {
             if transcription_key.is_some() {
                 self.credentials.save(&audio_scope, &next_audio_key)?;
@@ -413,6 +444,7 @@ impl NativeEngine {
             return Err("Add your provider API key in Settings before using audio transcription or assistance.".into());
         }
         let mut settings = configuration.settings.clone();
+        settings.resolve_hosted_role(false);
         if settings.is_palepale() {
             if settings.smart_mode
                 && !lock(&self.published_models)?.iter().any(|model| {
@@ -444,6 +476,10 @@ impl Configuration {
         } else {
             self.key.clone()
         };
+        settings.resolve_hosted_role(true);
+        if settings.is_palepale() && settings.provider_transcription_model().is_empty() {
+            return Err("Refresh Palepale in Settings > AI provider before recording.".into());
+        }
         let url = url::Url::parse(settings.provider_base_url())
             .map_err(|_| "Invalid transcription URL.".to_string())?;
         if key.is_empty() && !provider::is_loopback(&url) {
@@ -479,6 +515,7 @@ impl NativeEngine {
                 settings.chat_model = settings.image_model.clone();
                 key = config.image_key.clone();
             }
+            settings.resolve_hosted_role(audio);
             (settings, key, self.provider_revision.load(Ordering::SeqCst))
         };
         let result = provider::test_byok(&self.client, &settings, &key, audio, image, cancel).await;
@@ -558,6 +595,7 @@ impl NativeEngine {
         let mut settings = configuration.settings.clone();
         settings.api_base_url = settings.image_base_url.clone();
         settings.chat_model = settings.image_model.clone();
+        settings.resolve_hosted_role(false);
         if settings.chat_model.is_empty() {
             return Err("Choose an image model in Settings > AI provider > Advanced.".into());
         }

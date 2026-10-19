@@ -3,6 +3,12 @@
 The application has one local session engine and two provider modes. Selecting a
 provider never uploads previous sessions by itself.
 
+BYOK also offers **Palepale account** independently for Text, Audio, and Images.
+Connect Palepale once, return to BYOK, then select it for the roles you want.
+For example, keep DeepSeek for Text and use Palepale for Audio. Save the selection
+and load models. Palepale rows share the paired account credential and use its
+published model capabilities; other rows keep their own provider keys.
+
 See [BYOK setup roadmap](byok-roadmap.md) for the Terax source comparison,
 completed input improvements and prioritized onboarding work.
 

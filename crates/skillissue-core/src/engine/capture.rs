@@ -21,13 +21,14 @@ impl NativeEngine {
     pub async fn start_capture(self: &Arc<Self>) -> Result<(), String> {
         let refresh_hosted = {
             let configuration = lock(&self.configuration)?;
-            if configuration.settings.is_palepale() && !self.active.load(Ordering::SeqCst) {
-                if configuration.settings.palepale.chat_model.is_empty() {
+            let (audio_settings, audio_key) = configuration.transcription_configuration()?;
+            if audio_settings.is_palepale() && !self.active.load(Ordering::SeqCst) {
+                if audio_settings.provider_transcription_model().is_empty() {
                     return Err(
                         "Refresh Palepale in Settings > AI provider before recording.".into(),
                     );
                 }
-                if configuration.key.is_empty() {
+                if audio_key.is_empty() {
                     return Err(
                         "Connect Palepale in Settings > AI provider before recording.".into(),
                     );
