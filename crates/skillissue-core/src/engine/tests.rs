@@ -236,8 +236,8 @@ async fn transcript_wait_budget_does_not_require_job_completion() {
 }
 
 #[tokio::test]
-async fn late_transcription_is_saved_and_used_by_the_next_question() {
-    tokio::time::timeout(Duration::from_secs(15), async {
+async fn late_transcription_sends_the_original_question_once_without_retry() {
+    tokio::time::timeout(Duration::from_secs(20), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let fixture = Fixture::new(&format!("http://{}/v1", listener.local_addr().unwrap()));
         let engine = NativeEngine::open(fixture.0.clone()).unwrap();
@@ -264,27 +264,33 @@ async fn late_transcription_is_saved_and_used_by_the_next_question() {
         engine.queue_transcription(AudioSegment {
             source: "microphone".into(), sample_rate: 8_000, samples: vec![0.01; 80],
         });
-        let error = engine.assist("What was agreed?".into(), None).await.unwrap_err();
-        assert!(error.contains("has not been sent"));
+        let worker = engine.clone();
+        let question = tokio::spawn(async move {
+            worker.assist("What was agreed?".into(), None).await
+        });
+        // Cross both former deadlines: the four-second audio wait and ten-second collector.
+        tokio::time::sleep(Duration::from_secs(11)).await;
+        assert!(!question.is_finished(), "Ask must remain pending until transcription finishes");
         assert!(engine.snapshot().unwrap().messages.is_empty());
-        let mut warned = false;
+        let mut waiting = false;
         while let Ok(event) = events.try_recv() {
-            if let EngineEvent::Assistant { kind, .. } = event {
-                warned |= kind == "context";
+            if let EngineEvent::Assistant { kind, text, .. } = event {
+                assert_ne!(kind, "error");
+                waiting |= kind == "preparing" && text.contains("automatically");
             }
         }
-        assert!(warned);
+        assert!(waiting);
         release.send(()).unwrap();
         let watermark = lock(&engine.jobs).unwrap().watermark();
         assert_eq!(engine.wait_for_transcript(watermark, Duration::from_secs(5)).await.unwrap().pending, 0);
         let snapshot = engine.snapshot().unwrap();
         assert_eq!(snapshot.transcript.len(), 1);
         assert_eq!(engine.saved_session(snapshot.session_id.as_deref().unwrap()).unwrap().transcript.len(), 1);
-        engine.assist("What was agreed?".into(), None).await.unwrap();
+        question.await.unwrap().unwrap();
         server.await.unwrap();
         let log = std::fs::read_to_string(fixture.0.join("provider-requests.log")).unwrap();
         let entries: Vec<serde_json::Value> = log.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
-        assert_eq!(entries.len(), 1, "only the explicit retry sends an answer request");
+        assert_eq!(entries.len(), 1, "the original question sends exactly one answer request");
         assert_eq!(entries[0]["audioPendingAtWaitEnd"], 0);
         assert_eq!(engine.context_status().unwrap().transcriptions[0].state, crate::jobs::TranscriptionState::Ready);
         engine.new_session().unwrap();
@@ -297,9 +303,16 @@ async fn late_transcription_is_saved_and_used_by_the_next_question() {
 async fn pending_audio_notice_is_not_question_context() {
     let fixture = Fixture::new("http://127.0.0.1:1/v1");
     let engine = NativeEngine::open(fixture.0.clone()).unwrap();
-    lock(&engine.jobs).unwrap().submit();
-    let error = engine.assist(String::new(), None).await.unwrap_err();
-    assert!(error.contains("has not been sent"), "{error}");
+    let job = lock(&engine.jobs).unwrap().submit();
+    let worker = engine.clone();
+    let finish = async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        lock(&worker.jobs).unwrap().complete(job);
+        worker.jobs_done.notify_waiters();
+    };
+    let (result, ()) = tokio::join!(engine.assist(String::new(), None), finish);
+    let error = result.unwrap_err();
+    assert!(error.contains("Type a question"), "{error}");
     assert!(engine.snapshot().unwrap().messages.is_empty());
 }
 

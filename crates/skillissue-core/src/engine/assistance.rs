@@ -286,6 +286,7 @@ impl NativeEngine {
             kind: "preparing".into(),
             text: "Preparing context and waiting for recent speech…".into(),
         });
+        let request_id = id.to_owned();
         let flush_audio = async move {
             let capture_engine = engine.clone();
             tokio::task::spawn_blocking(move || {
@@ -297,9 +298,25 @@ impl NativeEngine {
             .await
             .map_err(|error| format!("Flush audio: {error}"))??;
             let watermark = lock(&engine.jobs)?.watermark();
-            engine
-                .wait_for_transcript(watermark, std::time::Duration::from_secs(4))
-                .await
+            let started = Instant::now();
+            loop {
+                let mut progress = engine
+                    .wait_for_transcript(watermark, std::time::Duration::from_secs(1))
+                    .await?;
+                if progress.pending == 0 {
+                    progress.elapsed = started.elapsed();
+                    break Ok(progress);
+                }
+                engine.emit(EngineEvent::Assistant {
+                    id: request_id.clone(),
+                    kind: "preparing".into(),
+                    text: format!(
+                        "Waiting for {} audio segment(s) captured before Ask ({}s). Your question will send automatically. Cancel to stop waiting.",
+                        progress.pending,
+                        started.elapsed().as_secs()
+                    ),
+                });
+            }
         };
         let references = plan.references;
         let document_context = if references.is_empty() {
@@ -322,15 +339,6 @@ impl NativeEngine {
             }
         })
         .await?;
-        if audio_wait.pending > 0 {
-            let message = "Recent speech is still being transcribed. Your question has not been sent to the answer provider. Wait for transcription to finish, then send it again.";
-            self.emit(EngineEvent::Assistant {
-                id: id.into(),
-                kind: "context".into(),
-                text: message.into(),
-            });
-            return Err(message.into());
-        }
         self.emit(EngineEvent::Assistant {
             id: id.into(),
             kind: "prepared".into(),

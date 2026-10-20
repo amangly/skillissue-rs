@@ -23,8 +23,11 @@ protocol against a mock server; account access and live speech need separate
 acceptance. No ffmpeg, websocat, or jq installation is required.
 
 Before answering, the app sends pending captured speech for transcription and
-waits up to four seconds. If transcription is still processing, the app keeps
-the question for you to send again and sends no answer request. The transcript
+keeps the question pending until those segments finish. The waiting message shows
+the pending count and elapsed time; Cancel stops the question. Speech captured
+after the flush does not extend this wait. The app sends the answer request once,
+without requiring you to resend the question. Reference search has a separate
+ten-second timeout. The transcript
 drawer shows each audio segment's progress. Failed audio requests leave a visible
 gap and require user action; the app never retries them automatically.
 Transcription requests may consume provider credits.

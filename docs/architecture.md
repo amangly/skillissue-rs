@@ -46,10 +46,12 @@ The transcript drawer shows queued, transcribing, saved, empty, and failed
 segments. The engine tracks pending work and up to 32 completed jobs, then clears
 that list when switching sessions. Progress records contain no audio or transcript text.
 
-Questions flush capture and wait up to four seconds for jobs already accepted.
-Later speech does not extend the wait. If those jobs remain pending, the app
-keeps the question in the composer for the user to send again. It sends no answer
-request. Users can cancel context preparation, which times out after ten seconds.
+Questions flush capture and wait for jobs already accepted to finish. Later speech
+does not extend the wait. The pending question stays reserved, with a progress
+message showing the remaining segment count and elapsed seconds. Once the jobs
+finish, the original question sends one answer request. Cancel interrupts the wait
+without cancelling accepted transcription jobs. Provider requests retain their
+own timeouts; reference search has a separate ten-second timeout.
 Only the configured Audio adapter receives raw audio.
 
 ## Desktop and platform

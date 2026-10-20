@@ -3,6 +3,13 @@
 The repository separates deterministic tests, native startup checks, visual review,
 and real-device or service acceptance.
 
+Pending-question fix: 202 core/domain tests passed with one ignored; Clippy and
+formatting checks passed. A mock provider delays transcription for eleven seconds
+and verifies that the original question remains pending, includes the completed
+transcript, and sends one answer request. Separate tests cover cancellation and
+waiting only for jobs accepted before the question's capture flush. Live UI and
+microphone acceptance of this fix remain open.
+
 Deepgram integration: the local workspace suite passed 339 tests with two
 ignored, and Clippy and formatting checks passed. Mock WebSocket tests cover
 Token authentication, PCM upload, CloseStream, final-only persistence, and

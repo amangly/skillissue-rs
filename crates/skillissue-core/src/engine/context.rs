@@ -110,8 +110,14 @@ where
     tokio::select! {
         biased;
         _ = cancel.cancelled() => Err("Request cancelled.".into()),
-        _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => Err("Context preparation timed out. Your question has not been sent to the answer provider. Wait for transcription or remove unavailable references, then send it again.".into()),
-        result = async { tokio::try_join!(audio, documents) } => result,
+        result = async {
+            let documents = async {
+                tokio::time::timeout(Duration::from_secs(10), documents)
+                    .await
+                    .map_err(|_| "Reference search timed out. Your question has not been sent to the answer provider.".to_string())?
+            };
+            tokio::try_join!(audio, documents)
+        } => result,
     }
 }
 
