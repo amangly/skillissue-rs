@@ -11,6 +11,15 @@ pub struct ByokProvider {
 }
 pub const BYOK_PROVIDERS: &[ByokProvider] = &[
     ByokProvider {
+        id: "deepgram",
+        name: "Deepgram",
+        base_url: "https://api.deepgram.com/v1",
+        setup_url: "https://console.deepgram.com/",
+        docs_url: "https://developers.deepgram.com/reference/speech-to-text/listen-streaming",
+        guidance: "Audio only. Nova-3 transcribes completed speech segments. Empty language uses English; set a language code or multi for supported multilingual speech. Continuous capture streaming and interim text are not yet integrated.",
+        transcription_model: Some("nova-3"),
+    },
+    ByokProvider {
         id: "openai",
         name: "OpenAI",
         base_url: "https://api.openai.com/v1",
@@ -157,6 +166,21 @@ pub fn starter_image_model(id: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     #[test]
+    fn fresh_byok_defaults_preserve_legacy_deserialization() {
+        let fresh = crate::models::Settings::new_profile();
+        assert_eq!(fresh.api_base_url, "https://api.deepseek.com");
+        assert_eq!(fresh.chat_model, "deepseek-flash");
+        assert_eq!(fresh.image_model, "deepseek-flash");
+        assert_eq!(fresh.transcription_base_url, "https://api.deepgram.com/v1");
+        assert_eq!(fresh.transcription_model, "nova-3");
+        let saved: crate::models::Settings =
+            serde_json::from_str(r#"{"apiBaseUrl":"https://example.org/v1","chatModel":"chosen"}"#)
+                .unwrap();
+        assert_eq!(saved.chat_model, "chosen");
+        assert!(saved.transcription_base_url.is_empty());
+        assert!(saved.image_base_url.is_empty());
+    }
+    #[test]
     fn exact_matching_does_not_recognize_lookalikes_or_unrelated_paths() {
         assert_eq!(
             byok_provider(" https://api.anthropic.com/v1/ ").unwrap().id,
@@ -165,6 +189,6 @@ mod tests {
         assert!(byok_provider("https://api.anthropic.com.evil.example/v1").is_none());
         assert!(byok_provider("https://api.anthropic.com/v1/proxy").is_none());
         let ids: std::collections::BTreeSet<_> = BYOK_PROVIDERS.iter().map(|p| p.id).collect();
-        assert_eq!(ids.len(), 12);
+        assert_eq!(ids.len(), 13);
     }
 }

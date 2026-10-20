@@ -11,3 +11,6 @@ description = "Shared data and input policy for skillissue"
 [dependencies]
 serde.workspace = true
 global-hotkey.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

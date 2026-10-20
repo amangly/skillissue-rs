@@ -146,6 +146,12 @@ async fn model_list(
     role: Option<u8>,
     cancel: CancellationToken,
 ) -> Result<Vec<String>, String> {
+    if super::deepgram::recognizes(settings) {
+        if role.is_some_and(|role| role != 1) {
+            return Ok(Vec::new());
+        }
+        return super::deepgram::models(client, settings, key, cancel).await;
+    }
     let mut url = endpoint(settings, key, "models")?;
     if role == Some(1)
         && skillissue_domain::byok::byok_provider(settings.provider_base_url())

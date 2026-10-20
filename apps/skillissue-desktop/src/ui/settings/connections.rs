@@ -489,6 +489,9 @@ impl NativeView {
                 choices.extend([("Off", "off"), ("Use text provider", "shared")]);
             }
             for provider in BYOK_PROVIDERS {
+                if role == ConnectionRole::Text && provider.id == "deepgram" {
+                    continue;
+                }
                 if role == ConnectionRole::Audio && provider.transcription_model.is_none() {
                     continue;
                 }

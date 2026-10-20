@@ -6,6 +6,7 @@ mod account;
 mod byok;
 mod chat;
 mod completion;
+mod deepgram;
 mod http;
 mod media;
 mod notes;

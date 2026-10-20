@@ -3,6 +3,25 @@
 The application has one local session engine and two provider modes. Selecting a
 provider never uploads previous sessions by itself.
 
+New BYOK profiles select DeepSeek `deepseek-flash` for Text and Images and
+Deepgram `nova-3` for Audio. Existing settings, including legacy files with
+omitted fields, keep their previous defaults. Provider keys are still required.
+
+For Deepgram, select **Settings > AI provider > BYOK > Audio > Deepgram**,
+enter the key, and Save. Test sends half a second of synthetic silence and may
+consume credits. The base URL is `https://api.deepgram.com/v1`; the app uses
+`wss://api.deepgram.com/v1/listen` with Token authentication. Model discovery
+reads Deepgram's `stt` catalog and offers supported streaming Nova-3 IDs.
+An empty language means English. Use a supported language code such as `id`
+or `zh`, or `multi` for Deepgram's supported multilingual set.
+
+The current adapter sends each completed local speech segment as mono 16 kHz
+PCM16 over its own WebSocket, sends `CloseStream`, and saves only final results
+after completion. It does not yet stream capture continuously or display
+interim text. Failed connections are not replayed. Local tests verify the
+protocol against a mock server; account access and live speech need separate
+acceptance. No ffmpeg, websocat, or jq installation is required.
+
 Before answering, the app sends pending captured speech for transcription and
 waits up to four seconds. If transcription is still processing, the app keeps
 the question for you to send again and sends no answer request. The transcript

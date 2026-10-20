@@ -16,6 +16,10 @@ pub async fn transcribe(
     api_key: &str,
     wav: Vec<u8>,
 ) -> Result<String, String> {
+    if super::deepgram::recognizes(settings) {
+        validate_audio(settings, &wav)?;
+        return super::deepgram::transcribe(settings, api_key, wav).await;
+    }
     if settings.is_palepale() {
         let mut body = hosted_audio_body(settings, &wav)?;
         endpoint(settings, api_key, "chat/completions")?;

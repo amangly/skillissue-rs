@@ -179,7 +179,7 @@ pub fn validate(mut settings: Settings) -> Result<Settings, String> {
 
 pub fn load(path: &Path) -> Result<Settings, String> {
     if !path.exists() {
-        let mut settings = Settings::default();
+        let mut settings = Settings::new_profile();
         if let Ok(base) = std::env::var(identity::API_BASE_ENV) {
             settings.api_base_url = base;
         }

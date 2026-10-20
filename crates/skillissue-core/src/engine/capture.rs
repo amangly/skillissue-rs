@@ -183,7 +183,10 @@ impl NativeEngine {
         let started = Instant::now();
         let queue_ms = started.duration_since(queued.queued_at).as_millis();
         let encoding_started = Instant::now();
-        let wav = if queued.settings.is_palepale() {
+        let wav = if queued.settings.is_palepale()
+            || skillissue_domain::byok::byok_provider(queued.settings.provider_base_url())
+                .is_some_and(|provider| provider.id == "deepgram")
+        {
             audio::encode_hosted_wav(&queued.segment)
         } else {
             audio::encode_wav(&queued.segment)

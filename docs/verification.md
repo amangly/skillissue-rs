@@ -3,6 +3,14 @@
 The repository separates deterministic tests, native startup checks, visual review,
 and real-device or service acceptance.
 
+Deepgram integration: the local workspace suite passed 339 tests with two
+ignored, and Clippy and formatting checks passed. Mock WebSocket tests cover
+Token authentication, PCM upload, CloseStream, final-only persistence, and
+rejection of an incomplete connection. Validation tests cover language/model
+selection, malformed audio, response redaction, catalog filtering, and separate
+new-profile defaults. These checks do not establish live Nova-3 accuracy,
+latency, account access, or continuous capture streaming.
+
 ## Automated checks
 
 Run these commands from a clean Windows MSVC environment:

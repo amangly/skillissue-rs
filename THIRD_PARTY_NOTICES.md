@@ -3,6 +3,9 @@
 Project-owned code and maintainer-authorized artwork use Apache-2.0. Existing
 third-party code, fonts, and notices retain their original licenses.
 
+- Tokio Tungstenite and Tungstenite provide Deepgram's WebSocket transport.
+  Their MIT notices are retained in `assets/licenses/dependencies/`.
+
 - Earshot 1.2.2 provides embedded neural speech detection under the MIT license.
   Upstream commit: `c400f15bd232dda30a297eec90235bd09066cab7`.
   License: `assets/licenses/dependencies/earshot-MIT.txt`, copied from

@@ -89,6 +89,19 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// Fresh profiles use dedicated audio. Keep Default stable for legacy deserialization.
+    pub fn new_profile() -> Self {
+        Self {
+            api_base_url: "https://api.deepseek.com".into(),
+            chat_model: "deepseek-flash".into(),
+            image_base_url: "https://api.deepseek.com".into(),
+            image_model: "deepseek-flash".into(),
+            transcription_base_url: "https://api.deepgram.com/v1".into(),
+            transcription_model: "nova-3".into(),
+            ..Self::default()
+        }
+    }
+
     pub fn hosted_endpoint(endpoint: &str) -> bool {
         endpoint.trim_end_matches('/') == crate::provider::PALEPALE_BASE_URL.trim_end_matches('/')
     }
