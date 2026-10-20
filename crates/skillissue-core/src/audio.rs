@@ -4,6 +4,14 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
+mod live;
+pub use live::{LiveFrame, LiveResampler};
+
+pub enum StreamEvent {
+    Frame(LiveFrame),
+    Boundary { source: String, ending: bool },
+}
+pub type StreamCallback = Arc<dyn Fn(StreamEvent) -> Result<(), String> + Send + Sync>;
 
 #[cfg(any(windows, test))]
 pub use processing::Segmenter as SpeechSegmenter;
@@ -43,16 +51,35 @@ impl AudioCapture {
         on_level: Arc<dyn Fn(AudioLevel) + Send + Sync>,
         on_error: Arc<dyn Fn(String) + Send + Sync>,
     ) -> Result<Self, String> {
+        Self::start_inner(options, on_segment, on_level, on_error, None)
+    }
+
+    pub fn start_live(
+        options: CaptureOptions,
+        stream: StreamCallback,
+        on_level: Arc<dyn Fn(AudioLevel) + Send + Sync>,
+        on_error: Arc<dyn Fn(String) + Send + Sync>,
+    ) -> Result<Self, String> {
+        Self::start_inner(options, Arc::new(|_| {}), on_level, on_error, Some(stream))
+    }
+
+    fn start_inner(
+        options: CaptureOptions,
+        on_segment: Arc<dyn Fn(AudioSegment) + Send + Sync>,
+        on_level: Arc<dyn Fn(AudioLevel) + Send + Sync>,
+        on_error: Arc<dyn Fn(String) + Send + Sync>,
+        stream: Option<StreamCallback>,
+    ) -> Result<Self, String> {
         if !options.microphone && !options.system_audio {
             return Err("Select microphone or system audio before starting capture.".into());
         }
         #[cfg(windows)]
         {
-            windows_capture::start(options, on_segment, on_level, on_error)
+            windows_capture::start(options, on_segment, on_level, on_error, stream)
         }
         #[cfg(not(windows))]
         {
-            let _ = (options, on_segment, on_level, on_error);
+            let _ = (options, on_segment, on_level, on_error, stream);
             Err("Native microphone and system audio capture currently require Windows.".into())
         }
     }
@@ -549,6 +576,7 @@ mod windows_capture {
         on_segment: Arc<dyn Fn(AudioSegment) + Send + Sync>,
         on_level: Arc<dyn Fn(AudioLevel) + Send + Sync>,
         on_error: Arc<dyn Fn(String) + Send + Sync>,
+        stream: Option<StreamCallback>,
     ) -> Result<AudioCapture, String> {
         let mut capture = AudioCapture {
             stop: Arc::new(AtomicBool::new(false)),
@@ -570,6 +598,7 @@ mod windows_capture {
             let ready = ready_tx.clone();
             let (flush_tx, flush_rx) = mpsc::sync_channel(1);
             let chunk_seconds = options.chunk_seconds;
+            let stream = stream.clone();
             let worker = thread::Builder::new()
                 .name(format!("skillissue-{source}"))
                 .spawn(move || {
@@ -582,6 +611,7 @@ mod windows_capture {
                         level,
                         &ready,
                         flush_rx,
+                        stream,
                     );
                     if let Err(message) = result {
                         let message = format!("{source} capture: {message}");
@@ -614,6 +644,7 @@ mod windows_capture {
         on_level: Arc<dyn Fn(AudioLevel) + Send + Sync>,
         ready: &SyncSender<Result<(), String>>,
         flush_rx: Receiver<SyncSender<()>>,
+        stream: Option<StreamCallback>,
     ) -> Result<(), String> {
         wasapi::initialize_mta()
             .ok()
@@ -668,6 +699,7 @@ mod windows_capture {
             .map_err(|e| format!("Activate WASAPI capture service: {e}"))?;
         let mut mono = Vec::with_capacity(buffer_frames);
         let mut segmenter = Segmenter::new(source, sample_rate, chunk_seconds);
+        let mut live = LiveResampler::new(source, sample_rate)?;
         client.start_stream().map_err(|e| e.to_string())?;
         let _ = ready.send(Ok(()));
         let mut last_packet = Instant::now();
@@ -708,14 +740,35 @@ mod windows_capture {
                         });
                         last_meter = Instant::now();
                     }
-                    segmenter.push(&mono, on_segment.as_ref());
+                    if let Some(stream) = &stream {
+                        live.push(&mono, stream.as_ref())?;
+                    } else {
+                        segmenter.push(&mono, on_segment.as_ref());
+                    }
                 }
                 while let Ok(ack) = flush_rx.try_recv() {
-                    segmenter.finish(on_segment.as_ref());
+                    if let Some(stream) = &stream {
+                        live.finish(stream.as_ref())?;
+                        stream(StreamEvent::Boundary {
+                            source: source.into(),
+                            ending: false,
+                        })?;
+                    } else {
+                        segmenter.finish(on_segment.as_ref());
+                    }
                     let _ = ack.send(());
                 }
                 // Loopback endpoints may deliver no packets at all while the output is silent.
-                if last_packet.elapsed() >= Duration::from_millis(650) {
+                if let Some(stream) = &stream
+                    && last_packet.elapsed() >= Duration::from_millis(100)
+                {
+                    // Some loopback devices omit silent packets. Advance the audio clock
+                    // with silence so endpointing and word timestamps remain meaningful.
+                    let silent = (last_packet.elapsed().as_secs_f64() * f64::from(sample_rate))
+                        .min(f64::from(sample_rate)) as usize;
+                    live.push(&vec![0.0; silent], stream.as_ref())?;
+                    last_packet = Instant::now();
+                } else if stream.is_none() && last_packet.elapsed() >= Duration::from_millis(650) {
                     segmenter.finish(on_segment.as_ref());
                     if last_meter.elapsed() >= Duration::from_millis(100) {
                         on_level(AudioLevel {
@@ -732,12 +785,22 @@ mod windows_capture {
         let stop_result = client
             .stop_stream()
             .map_err(|e| format!("Stop WASAPI stream: {e}"));
-        segmenter.finish(on_segment.as_ref());
+        let finish_result = if let Some(stream) = &stream {
+            live.finish(stream.as_ref()).and_then(|()| {
+                stream(StreamEvent::Boundary {
+                    source: source.into(),
+                    ending: true,
+                })
+            })
+        } else {
+            segmenter.finish(on_segment.as_ref());
+            Ok(())
+        };
         on_level(AudioLevel {
             source: source.into(),
             level: 0.0,
         });
-        result.and(stop_result)
+        result.and(stop_result).and(finish_result)
     }
 
     fn read_packet(

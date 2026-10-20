@@ -214,6 +214,57 @@ pub struct TranscriptEntry {
     pub source: String,
     pub text: String,
     pub created_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech: Option<SpeechMetadata>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechMetadata {
+    /// Speaker numbers are scoped to this connection, never verified identities.
+    pub stream_id: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub words: Vec<SpeechWord>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechWord {
+    pub text: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub speaker: Option<u32>,
+    pub confidence: Option<f64>,
+}
+
+impl TranscriptEntry {
+    pub fn speaker_label(&self) -> String {
+        let source = if self.source == "microphone" {
+            "Microphone"
+        } else {
+            "System audio"
+        };
+        let speakers: std::collections::BTreeSet<_> = self
+            .speech
+            .iter()
+            .flat_map(|speech| &speech.words)
+            .filter_map(|word| word.speaker)
+            .collect();
+        if speakers.is_empty() {
+            source.into()
+        } else {
+            format!(
+                "{source} · {}",
+                speakers
+                    .into_iter()
+                    .take(8)
+                    .map(|id| format!("Speaker {}", id.saturating_add(1)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -40,6 +40,7 @@ impl NativeEngine {
             latest_transcript_at: session.transcript.back().map(|entry| entry.created_at),
             transcript_entries: session.transcript.len(),
             transcriptions: jobs.progress(),
+            live_audio: lock(&self.live_audio)?.clone(),
         })
     }
     pub fn list_sessions(
@@ -78,7 +79,10 @@ impl NativeEngine {
     }
 
     pub(super) fn ensure_idle(&self) -> Result<(), String> {
-        if self.active.load(Ordering::SeqCst) || self.stopping.load(Ordering::SeqCst) {
+        if self.active.load(Ordering::SeqCst)
+            || self.stopping.load(Ordering::SeqCst)
+            || self.live_workers.load(Ordering::SeqCst) > 0
+        {
             return Err(
                 "Stop capture and wait for transcription before changing the session.".into(),
             );
@@ -136,6 +140,7 @@ impl NativeEngine {
         }
         self.epoch.fetch_add(1, Ordering::SeqCst);
         lock(&self.jobs)?.clear_progress();
+        lock(&self.live_audio)?.clear();
         drop(session);
         self.publish_snapshot();
         self.emit(EngineEvent::HistoryChanged);

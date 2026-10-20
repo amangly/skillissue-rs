@@ -66,6 +66,7 @@ impl NativeView {
                     }
                     match result {
                         Ok(record) => {
+                            self.dashboard.note_evidence = None;
                             self.title.update(cx, |input, cx| {
                                 input.set_value(record.title.clone(), window, cx)
                             });
@@ -479,11 +480,27 @@ impl NativeView {
                         .child(button("copy-summary", "Copy summary").ghost().icon(icon(Glyph::Copy)).disabled(selected.is_none()).on_click(cx.listener(|this, _, _, cx| this.copy_dashboard_summary(cx)))))))
                 .child(div().mt_3().when(self.dashboard.detail_tab == DetailTab::Summary, |view| view
                     .when_some(selected.and_then(|session| session.summary_error.clone()), |view, error| view.child(muted(format!("Notes generation failed: {error}")).text_color(ink(0xc34b4b))))
-                    .child(Textarea::new(&self.notes).appearance(false).bordered(false).h(px(260.)).disabled(self.notes_busy || selected.is_none()).aria_label("Session notes")))
+                    .child(Textarea::new(&self.notes).appearance(false).bordered(false).h(px(260.)).disabled(self.notes_busy || selected.is_none()).aria_label("Session notes"))
+                    .when_some(selected, |view, session| {
+                        let sources = skillissue_core::provider::note_sources(self.notes.read(cx).value().as_str(), &session.transcript);
+                        view.child(div().flex().flex_wrap().gap_2().children(sources.into_iter().map(|(number, entry)| {
+                            let id = entry.id.clone();
+                            div().debug_selector(move || format!("notes-evidence-{number}")).child(button(SharedString::from(format!("notes-evidence-{number}")), SharedString::from(format!("[T{number}] {}", entry.speaker_label()))).ghost()
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.dashboard.note_evidence = Some(id.clone());
+                                    cx.notify();
+                                })))
+                        })))
+                        .when_some(session.transcript.iter().find(|entry| self.dashboard.note_evidence.as_deref() == Some(entry.id.as_str())), |view, entry| {
+                            view.child(div().debug_selector(|| "notes-source-excerpt".into()).p_3().rounded_lg().border_1().border_color(glass(LINE)).flex().flex_col().gap_2()
+                                .child(muted(format!("{} · {}", entry.speaker_label(), date(entry.created_at))))
+                                .child(markdown(SharedString::from(format!("notes-source-{}",entry.id)), entry.text.clone())))
+                        })
+                    }))
                     .when(self.dashboard.detail_tab == DetailTab::Transcript, |view| view.child(div().flex().flex_col().gap_5()
                         .when(selected.is_none_or(|session| session.transcript.is_empty()), |view| view.child(muted("No transcript")))
                         .children(selected.into_iter().flat_map(|session| session.transcript.iter()).map(|entry| div().flex().flex_col().gap_1()
-                            .child(div().flex().gap_2().text_xs().child(div().text_color(ink(if entry.source == "microphone" { BLUE } else { SECONDARY })).child(if entry.source == "microphone" { "Me" } else { "Them" })).child(div().text_color(ink(SECONDARY)).child(date(entry.created_at))))
+                            .child(div().flex().gap_2().text_xs().child(div().text_color(ink(if entry.source == "microphone" { BLUE } else { SECONDARY })).child(entry.speaker_label())).child(div().text_color(ink(SECONDARY)).child(date(entry.created_at))))
                             .child(markdown(SharedString::from(format!("detail-transcript-{}",entry.id)), entry.text.clone()))))))
                     .when(self.dashboard.detail_tab == DetailTab::Usage, |view| view.child(div().flex().flex_col().gap_5()
                         .when(selected.is_none_or(|session| session.messages.is_empty()), |view| view.child(muted("No usage messages yet.")))
@@ -526,8 +543,19 @@ impl NativeView {
                         "# {}\n\n## Notes\n\n{}\n\n## Transcript\n\n",
                         session.title, session.summary
                     );
-                    for entry in session.transcript {
-                        content.push_str(&format!("**{}**: {}\n\n", entry.source, entry.text));
+                    let mut transcript = session.transcript;
+                    transcript.sort_by_key(|entry| (entry.created_at, entry.id.clone()));
+                    for (index, entry) in transcript
+                        .into_iter()
+                        .filter(|entry| !entry.text.trim().is_empty())
+                        .enumerate()
+                    {
+                        content.push_str(&format!(
+                            "[T{}] **{}**: {}\n\n",
+                            index + 1,
+                            entry.speaker_label(),
+                            entry.text
+                        ));
                     }
                     content.push_str("## Conversation\n\n");
                     for message in session.messages {

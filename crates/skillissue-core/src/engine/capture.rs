@@ -51,7 +51,10 @@ impl NativeEngine {
             if engine.active.load(Ordering::SeqCst) {
                 return Ok(());
             }
-            let (settings, _) = lock(&engine.configuration)?.transcription_configuration()?;
+            if engine.live_workers.load(Ordering::SeqCst) > 0 {
+                return Err("The previous audio connection is still draining.".into());
+            }
+            let (settings, audio_key) = lock(&engine.configuration)?.transcription_configuration()?;
             if settings.is_palepale() && !lock(&engine.published_models)?.iter().any(|model| {
                 model.id == settings.provider_transcription_model()
                     && model.capabilities.streaming && model.capabilities.audio_input
@@ -62,29 +65,35 @@ impl NativeEngine {
             let weak_segments = Arc::downgrade(&engine);
             let weak_levels = Arc::downgrade(&engine);
             let weak_errors = Arc::downgrade(&engine);
-            let recording = AudioCapture::start(
-                CaptureOptions {
+            let options = CaptureOptions {
                     microphone: settings.microphone,
                     system_audio: settings.system_audio,
                     chunk_seconds: if settings.is_palepale() { settings.audio_chunk_seconds.min(3) } else { settings.audio_chunk_seconds },
-                },
-                Arc::new(move |segment| {
+                };
+            let on_segment = Arc::new(move |segment| {
                     if let Some(engine) = weak_segments.upgrade() {
                         engine.queue_transcription(segment);
                     }
-                }),
-                Arc::new(move |level| {
+                });
+            let on_level: Arc<dyn Fn(crate::audio::AudioLevel) + Send + Sync> = Arc::new(move |level| {
                     if let Some(engine) = weak_levels.upgrade() {
                         engine.emit(EngineEvent::AudioLevel(level));
                     }
-                }),
-                Arc::new(move |error| {
+                });
+            let on_error: Arc<dyn Fn(String) + Send + Sync> = Arc::new(move |error| {
                     if let Some(engine) = weak_errors.upgrade() {
                         engine.emit(EngineEvent::Error(error));
                         engine.stop_after_failure();
                     }
-                }),
-            )?;
+                });
+            let recording = if skillissue_domain::byok::byok_provider(settings.provider_base_url())
+                .is_some_and(|provider| provider.id == "deepgram") {
+                let stream = engine.prepare_live_audio(&settings, &audio_key)?;
+                AudioCapture::start_live(options, stream, on_level, on_error)?
+            } else {
+                lock(&engine.live_audio)?.clear();
+                AudioCapture::start(options, on_segment, on_level, on_error)?
+            };
             *slot = Some(recording);
             engine.active.store(true, Ordering::SeqCst);
             let persisted = (|| {
@@ -112,7 +121,7 @@ impl NativeEngine {
         .map_err(|e| format!("Start audio worker: {e}"))?
     }
 
-    fn stop_after_failure(self: &Arc<Self>) {
+    pub(super) fn stop_after_failure(self: &Arc<Self>) {
         let engine = self.clone();
         self.runtime.spawn(async move {
             if let Err(error) = engine.stop_capture().await {
@@ -208,6 +217,7 @@ impl NativeEngine {
                 return Ok(false);
             }
             let entry = TranscriptEntry {
+                speech: None,
                 id: uuid::Uuid::new_v4().to_string(),
                 source: queued.segment.source.clone(),
                 text,
@@ -312,7 +322,7 @@ impl NativeEngine {
         .map_err(|e| format!("Stop audio worker: {e}"))??;
         let watermark = lock(&self.jobs)?.watermark();
         tokio::time::timeout(Duration::from_secs(150), async {
-            loop { let notified = self.jobs_done.notified(); if lock(&self.jobs)?.finished_through(watermark) { return Ok::<(),String>(()); } notified.await; }
+            loop { let notified = self.jobs_done.notified(); if lock(&self.jobs)?.finished_through(watermark) && self.live_workers.load(Ordering::SeqCst) == 0 { return Ok::<(),String>(()); } notified.await; }
         }).await.map_err(|_| "Capture stopped, but transcription is still pending. Keep skillissue open until it finishes.".to_string())??;
         {
             let _transition = lock(&self.transition)?;

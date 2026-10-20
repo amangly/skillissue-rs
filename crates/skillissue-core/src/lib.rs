@@ -13,7 +13,7 @@ pub use skillissue_domain::shortcuts;
 mod startup;
 
 pub use engine::{
-    AssistTarget, ByokModelList, ContextStatus, EngineEvent, LatencySummary, NativeEngine,
-    PalepaleCredential, PalepalePairing,
+    AssistTarget, ByokModelList, ContextStatus, EngineEvent, LatencySummary, LiveAudioStatus,
+    NativeEngine, PalepaleCredential, PalepalePairing,
 };
 pub use provider::PalepaleAccountStatus;

@@ -15,12 +15,23 @@ reads Deepgram's `stt` catalog and offers supported streaming Nova-3 IDs.
 An empty language means English. Use a supported language code such as `id`
 or `zh`, or `multi` for Deepgram's supported multilingual set.
 
-The current adapter sends each completed local speech segment as mono 16 kHz
-PCM16 over its own WebSocket, sends `CloseStream`, and saves only final results
-after completion. It does not yet stream capture continuously or display
-interim text. Failed connections are not replayed. Local tests verify the
-protocol against a mock server; account access and live speech need separate
-acceptance. No ffmpeg, websocat, or jq installation is required.
+Deepgram capture sends continuous mono 16 kHz PCM16 in 100 ms frames, with a
+separate WebSocket for each enabled audio source. The transcript drawer shows
+interim text; only final results enter saved history and answer context. Final
+records retain word timings, confidence and provider speaker numbers when supplied.
+Speaker numbers identify voices within one connection, not verified people.
+Capture sends silence too, so leaving both sources enabled can increase usage.
+No ffmpeg, websocat, or jq installation is required.
+
+Ask and Stop send `CloseStream` and wait for final results and completion metadata.
+After Ask, newly captured audio waits in a bounded queue for a new connection.
+Speaker numbering can restart at that boundary. A disconnect or full queue stops
+capture and records a visible gap; accepted audio is never replayed automatically.
+The Audio Test button still uses a short, separate synthetic stream.
+
+Protocol references: Deepgram [CloseStream](https://developers.deepgram.com/docs/close-stream),
+[KeepAlive](https://developers.deepgram.com/docs/audio-keep-alive), and
+[speaker diarization](https://developers.deepgram.com/docs/diarization).
 
 Before answering, the app sends pending captured speech for transcription and
 keeps the question pending until those segments finish. The waiting message shows
@@ -49,7 +60,7 @@ completed input improvements and prioritized onboarding work.
 | Chat and notes | Configured Chat Completions endpoint | Fixed hosted Chat Completions endpoint with metered SSE |
 | Models | Manual IDs or filtered results from explicit model-list checks | Public catalog with published capability checks |
 | Authentication | Endpoint-scoped provider key | Browser-approved device pairing |
-| Transcription | Multipart `/audio/transcriptions`, optional separate URL/key or chat-only mode | Independent published audio model |
+| Transcription | Deepgram live WebSocket, multipart `/audio/transcriptions`, or supported audio chat | Independent published audio model |
 | Screenshots | Provider must accept image input | Published image capability required |
 | Smart effort | Low/High reasoning on supported Text and Images models | Published reasoning efforts required |
 
@@ -103,7 +114,8 @@ fallback; non-default profiles and Palepale never use that environment variable.
 
 Connecting Palepale, refreshing status, or reopening a connected profile can fetch
 its public catalog and authenticated account availability. Recording sends audio
-segments; Ask and notes send the selected context to the configured provider.
+continuously with Deepgram, or in segments with other adapters; Ask and notes send
+the selected context to the configured provider.
 Smart changes reasoning effort for the selected model. Provider
 retention, billing, and privacy terms apply to these requests; review them before
 connecting or enabling capture. There is no analytics or automatic update service.
@@ -113,7 +125,7 @@ connecting or enabling capture. There is no analytics or automatic update servic
 Choose a provider and paste its key in each row, then Save:
 
 - **Text:** answers and notes.
-- **Audio:** microphone and system audio transcription. Choose OpenAI, Groq,
+- **Audio:** microphone and system audio transcription. Choose Deepgram, OpenAI, Groq,
   Gemini, Mistral, OpenRouter, a custom speech service, Use text provider, or Off.
 - **Images:** screenshot questions. Choose OpenAI, Anthropic, Gemini, DeepSeek,
   Groq, Mistral, OpenRouter, a custom image-capable service, Use text provider, or Off.

@@ -28,8 +28,8 @@ can be configured in Advanced.
 
 ## Provider matrix
 
-All named presets use the provider's Chat Completions-compatible interface for
-streaming answers and notes. Provider-specific native features are not implied.
+Chat presets use the provider's Chat Completions-compatible interface for
+streaming answers and notes. Deepgram is an Audio-only preset.
 
 | Provider | Chat setup | Screenshots | Transcription setup | Smart / native provider tools |
 | --- | --- | --- | --- | --- |
@@ -37,6 +37,7 @@ streaming answers and notes. Provider-specific native features are not implied.
 | [Anthropic / Claude](https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk) | Official compatibility endpoint; workspace-scoped key | Compatible Claude image input | Separate speech connection | Smart uses thinking budgets on reviewed models; caching, workspace selection headers and native tools not integrated |
 | [Google Gemini](https://ai.google.dev/gemini-api/docs/openai) | Google AI Studio key; compatibility endpoint | Gemini Flash preset | Gemini Flash via audio chat; same key can serve all three roles | Gemini grounding and native tools not integrated |
 | [DeepSeek](https://api-docs.deepseek.com/guides/vision/) | DeepSeek key; defaults to `deepseek-flash` | Flash supports image and screenshot input | Separate speech connection | Native Search/Fetch not integrated |
+| [Deepgram](https://developers.deepgram.com/docs/getting-started-with-live-streaming-audio) | Not offered for Text | Not offered for Images | Nova-3 continuous WebSocket; separate key; interim text and final word/speaker metadata | Speaker IDs are local to each connection |
 | [Groq](https://console.groq.com/docs/vision) | Groq key; current chat model | `qwen/qwen3.8-27b` image preset | Shared Whisper speech model or separate connection | Groq built-in tools not integrated |
 | [xAI / Grok](https://docs.x.ai/developers/model-capabilities/text/generate-text) | xAI key; supported chat model | Model-specific | Separate speech connection | Native xAI search/tools not integrated |
 | [Cerebras](https://inference-docs.cerebras.ai/resources/openai) | Cerebras key; model or dedicated endpoint ID | Model/account-specific; omit unsupported image detail field | Separate speech connection | Native tools not integrated |
@@ -51,14 +52,15 @@ streaming answers and notes. Provider-specific native features are not implied.
 
 [Artificial Analysis speech-to-text](https://artificialanalysis.ai/speech-to-text/non-streaming)
 compares recognition accuracy, latency and cost. Its rankings help shortlist
-models; they do not establish API compatibility or account access. The app uses
-short WAV uploads, not a continuous realtime voice protocol.
+models; they do not establish API compatibility or account access. Deepgram uses
+continuous audio streaming. Other adapters use bounded audio segments.
 
-The Audio picker includes OpenAI, Groq, Gemini, Mistral and OpenRouter. Gemini uses
-documented `input_audio` chat messages; the others use multipart transcription.
+The Audio picker includes Deepgram, OpenAI, Groq, Gemini, Mistral and OpenRouter.
+Deepgram uses its native WebSocket protocol. Gemini uses documented `input_audio`
+chat messages; the others use multipart transcription.
 Mistral omits the unsupported `response_format` field. OpenRouter may route to
 additional speech vendors with an appropriate model ID in Advanced, but direct
-ElevenLabs, Deepgram, AssemblyAI, Azure and Google Cloud Speech keys are not
+ElevenLabs, AssemblyAI, Azure and Google Cloud Speech keys are not
 supported by those presets. Dedicated integrations remain separate work.
 
 Multimodal is model-specific: text support does not imply image or audio support.

@@ -126,6 +126,7 @@ impl NativeEngine {
                 || self.saved_questions.available_permits() == 0
                 || self.note_jobs.available_permits() == 0
                 || lock(&self.jobs)?.pending_count() > 0
+                || self.live_workers.load(Ordering::SeqCst) > 0
             {
                 return Err("Stop the active session and wait for answers, notes and transcription to finish before pairing Palepale.".into());
             }

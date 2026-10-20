@@ -1,5 +1,7 @@
-//! Nova-3 WebSocket transport for the existing bounded segment queue.
-//! Each segment owns its connection. This is not continuous microphone streaming.
+//! Nova-3 segment transport for explicit Audio tests and encoded fixtures.
+//! Capture uses the continuous transport in `live`.
+pub(super) mod benchmark;
+pub(crate) mod live;
 use super::http::{bounded_body, check_status, endpoint, network_error};
 use crate::models::Settings;
 use futures_util::{SinkExt, StreamExt};

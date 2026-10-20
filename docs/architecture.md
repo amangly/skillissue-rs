@@ -35,7 +35,16 @@ before asynchronous work, and rejects replies from obsolete provider or session
 generations. Accepted transcription jobs drain before capture or session changes
 complete.
 
-Audio capture uses an embedded Earshot neural detector per device stream.
+Deepgram capture uses one continuous WebSocket per enabled source. Packet-independent
+resampling produces mono 16 kHz PCM16 frames every 100 ms, including silence.
+Each source has room for 100 unsent frames. Interim text stays in memory; final
+text and optional word timing, speaker and confidence metadata enter SQLite.
+Ask/Stop drains the current connection before its boundary job completes. Later
+audio waits for the next connection. A failed connection or full queue records a
+gap and stops capture without replay. Provider/session changes also wait for the
+live workers to exit.
+
+Other audio adapters use an embedded Earshot neural detector per device stream.
 Streaming resampling produces mono 16 kHz audio and fixed 16 ms inference
 frames independently of WASAPI packet boundaries. Segments retain 300 ms of
 pre-roll, end after 320 ms of detected non-speech, and obey the configured
@@ -53,6 +62,13 @@ finish, the original question sends one answer request. Cancel interrupts the wa
 without cancelling accepted transcription jobs. Provider requests retain their
 own timeouts; reference search has a separate ten-second timeout.
 Only the configured Audio adapter receives raw audio.
+
+Generated notes request transcript citations such as `[T1]`, with action owner
+and due date left unknown unless stated. Out-of-range citations reject the
+generated result. Notes show buttons that open the cited excerpt, and Markdown
+exports retain matching transcript numbers. Numbering follows chronological
+order with record IDs breaking ties. This checks reference validity, not whether
+the model's interpretation is correct; speaker numbers remain connection-local.
 
 ## Desktop and platform
 

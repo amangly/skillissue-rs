@@ -9,6 +9,7 @@ mod assistance;
 mod capture;
 mod catalog;
 mod configuration;
+mod live_audio;
 pub use configuration::ByokModelList;
 mod context;
 mod credentials;
@@ -25,7 +26,7 @@ mod hosted_request_tests;
 mod tests;
 
 pub use assistance::AssistTarget;
-pub use events::{ContextStatus, EngineEvent};
+pub use events::{ContextStatus, EngineEvent, LiveAudioStatus};
 pub use latency::LatencySummary;
 pub use pairing::{PalepaleCredential, PalepalePairing};
 
@@ -91,6 +92,8 @@ pub struct NativeEngine {
     history: Mutex<History>,
     documents: DocumentStore,
     audio: Mutex<Option<AudioCapture>>,
+    live_audio: Mutex<Vec<events::LiveAudioStatus>>,
+    live_workers: AtomicU64,
     active: AtomicBool,
     stopping: AtomicBool,
     stop_done: Notify,
@@ -216,6 +219,8 @@ impl NativeEngine {
             history: Mutex::new(history),
             documents,
             audio: Mutex::new(None),
+            live_audio: Mutex::new(Vec::new()),
+            live_workers: AtomicU64::new(0),
             active: AtomicBool::new(false),
             stopping: AtomicBool::new(false),
             stop_done: Notify::new(),

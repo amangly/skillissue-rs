@@ -3,20 +3,26 @@
 The repository separates deterministic tests, native startup checks, visual review,
 and real-device or service acceptance.
 
-Pending-question fix: 202 core/domain tests passed with one ignored; Clippy and
-formatting checks passed. A mock provider delays transcription for eleven seconds
+The continuous-audio change passed 349 workspace tests with two ignored, plus
+Clippy with warnings denied and formatting checks on 2026-10-20.
+The release build and its `--smoke` startup check passed in a disposable profile:
+exit code zero, engine ready, no reported error. This did not record devices or
+open the user's history.
+
+The pending-question regression delays transcription for eleven seconds
 and verifies that the original question remains pending, includes the completed
 transcript, and sends one answer request. Separate tests cover cancellation and
 waiting only for jobs accepted before the question's capture flush. Live UI and
 microphone acceptance of this fix remain open.
 
-Deepgram integration: the local workspace suite passed 339 tests with two
-ignored, and Clippy and formatting checks passed. Mock WebSocket tests cover
-Token authentication, PCM upload, CloseStream, final-only persistence, and
-rejection of an incomplete connection. Validation tests cover language/model
-selection, malformed audio, response redaction, catalog filtering, and separate
-new-profile defaults. These checks do not establish live Nova-3 accuracy,
-latency, account access, or continuous capture streaming.
+Deepgram mock WebSocket tests cover Token authentication, PCM upload, interim
+results before a boundary, CloseStream completion, duplicate final results,
+final-only persistence, and refusal to replay a failed connection. Engine tests
+cover bounded-queue failure, persisted word/speaker metadata, stale session
+rejection, and final transcript persistence before boundary completion.
+The GPUI tests cover provisional transcript status and clicking a note citation
+to open its source excerpt. Passing these tests does not establish physical
+capture accuracy or long-session reliability.
 
 ## Automated checks
 
@@ -40,8 +46,8 @@ The capture tests check neural silence rejection at 8–192 kHz and resampling
 across packet boundaries. Scripted speech decisions check pre-roll, silence
 cutoffs, short-segment rejection, duration limits, and partial flushes separately
 from model accuracy.
-Loopback integration tests verify that delayed transcription blocks the answer
-request, the explicit retry includes the saved transcript, and cancellation
+Loopback integration tests verify that delayed transcription keeps the original
+question pending, the eventual answer includes the saved transcript, and cancellation
 during preparation never sends an answer POST. GPUI tests cover progress states
 and stale/cancelled preparation messages.
 
@@ -61,6 +67,34 @@ microphone, or provider connection.
 Use the same recordings and hashes for comparisons. Real recordings of quiet
 speech, keyboards, overlapping speakers, and long utterances still need testing.
 This benchmark does not measure transcription accuracy or provider latency.
+
+### Live Deepgram benchmark
+
+This command uploads the first 15 seconds of the supplied mono PCM16 WAV once,
+using the default profile's saved Deepgram key. It may consume provider credits:
+
+```console
+cargo run --locked --release -p skillissue-core --example live_audio_benchmark -- C:\fixtures\speech.wav C:\fixtures\reference.txt --saved-key
+```
+
+The reference text is optional and must match those first 15 seconds. The report
+includes time to first interim, final-result lag percentiles and normalized word
+error rate when a usable reference is supplied. Lag is elapsed time from the
+paced fixture start minus the provider's segment end; it includes connection
+startup. This is a transport test, not a microphone test.
+
+On 2026-10-20, one live Nova-3 run using the first 15 seconds of the Silero fixture
+below returned 12 interim and five final results. First interim arrived at
+2,034 ms; final lag was 1,047 ms at p50 and 3,281 ms at p95. The stream completed
+in 16,698 ms. No reference transcript was supplied, so accuracy was not scored.
+The report is local at `target/continuous-live-report.json`; it is not committed.
+
+Further acceptance needs fixed references for quiet speech, accents, overlapping
+speakers and multiple languages; a long dual-source recording; device loss; and
+network loss while Ask or Stop is draining. Speaker numbers can restart after
+Ask opens a new stream. Failed audio is not reconnected or replayed automatically.
+Long sessions still use the existing bounded context; hierarchical summaries
+and retrieval across the full meeting remain future work.
 
 An initial local check rejected the five-second silence and 440 Hz tone
 fixtures. Broadband noise produced a false positive: a 528 ms startup segment.

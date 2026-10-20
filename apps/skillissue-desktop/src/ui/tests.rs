@@ -2033,6 +2033,11 @@ fn transcription_progress_and_preparation_survive_window_updates(cx: &mut TestAp
             state,
         })
         .collect();
+        view.context.live_audio = vec![skillissue_core::LiveAudioStatus {
+            source: "microphone".into(),
+            state: "Listening".into(),
+            interim: "Provisional words".into(),
+        }];
         for (kind, text) in [
             ("start", "What was agreed?"),
             ("preparing", "Waiting for recent speech…"),
@@ -2073,6 +2078,7 @@ fn transcription_progress_and_preparation_survive_window_updates(cx: &mut TestAp
     fixture.render(cx);
     let mut visual = gpui_kit::VisualTestContext::from_window(fixture.window, cx);
     for selector in [
+        "live-transcript-microphone",
         "transcription-progress-0",
         "transcription-progress-1",
         "transcription-progress-2",
@@ -2084,6 +2090,51 @@ fn transcription_progress_and_preparation_survive_window_updates(cx: &mut TestAp
             "{selector} is missing"
         );
     }
+    assert!(!fixture.unused_data_dir.exists());
+}
+
+#[gpui_kit::test]
+fn notes_source_button_opens_the_cited_transcript(cx: &mut TestAppContext) {
+    let fixture = Fixture::new(cx);
+    fixture.route(cx, "session");
+    fixture.update(cx, |view, window, cx| {
+        view.selected = Some(skillissue_core::models::SessionRecord {
+            id: "citation-test".into(),
+            title: "Meeting".into(),
+            created_at: 1000,
+            updated_at: 1000,
+            ended_at: Some(1000),
+            state: "ready".into(),
+            summary: String::new(),
+            summary_error: None,
+            mode_name: None,
+            mode_sections: vec![],
+            transcript: vec![],
+            messages: vec![],
+        });
+        let session = view.selected.as_mut().unwrap();
+        session.transcript = vec![skillissue_core::models::TranscriptEntry {
+            id: "evidence".into(),
+            source: "microphone".into(),
+            text: "We agreed to meet Friday.".into(),
+            created_at: 1000,
+            speech: None,
+        }];
+        session.summary = "Meeting on Friday. [T1]".into();
+        view.notes.update(cx, |input, cx| {
+            input.set_value("Meeting on Friday. [T1]", window, cx)
+        });
+    });
+    cx.simulate_window_resize(fixture.window, size(px(1000.), px(1100.)));
+    fixture.render(cx);
+    let mut visual = gpui_kit::VisualTestContext::from_window(fixture.window, cx);
+    let source = visual
+        .debug_bounds("notes-evidence-1")
+        .expect("source reference");
+    visual.simulate_click(source.center(), Default::default());
+    fixture.render(cx);
+    let mut visual = gpui_kit::VisualTestContext::from_window(fixture.window, cx);
+    assert!(visual.debug_bounds("notes-source-excerpt").is_some());
     assert!(!fixture.unused_data_dir.exists());
 }
 

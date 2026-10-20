@@ -352,6 +352,18 @@ impl NativeView {
                                 .flex_1()
                                 .min_h_0()
                                 .overflow_y_scroll()
+                                .children(self.context.live_audio.iter().map(|status| {
+                                    div().debug_selector({
+                                        let source = status.source.clone();
+                                        move || format!("live-transcript-{source}")
+                                    }).py_2().flex().flex_col().gap_1()
+                                        .child(div().text_size(px(11.)).text_color(rgb(secondary))
+                                            .child(format!("{} · {}", if status.source == "microphone" { "Microphone" } else { "System audio" }, status.state)))
+                                        .when(!status.interim.is_empty(), |view| view.child(
+                                            div().text_size(px(12.)).text_color(rgb(secondary))
+                                                .child(format!("{} (interim)", status.interim))
+                                        ))
+                                }))
                                 .children(self.context.transcriptions.iter().enumerate().rev().filter(|(index, job)| {
                                     use skillissue_core::jobs::TranscriptionState;
                                     matches!(job.state, TranscriptionState::Queued | TranscriptionState::Transcribing | TranscriptionState::Failed)
@@ -382,11 +394,7 @@ impl NativeView {
                                             div()
                                                 .text_size(px(11.))
                                                 .text_color(rgb(secondary))
-                                                .child(if entry.source == "microphone" {
-                                                    "Me"
-                                                } else {
-                                                    "Them"
-                                                }),
+                                                .child(entry.speaker_label()),
                                         )
                                         .child(markdown(
                                             SharedString::from(format!("drawer-{}", entry.id)),

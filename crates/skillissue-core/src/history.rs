@@ -296,6 +296,7 @@ mod tests {
     }
     fn entry(id: &str, text: &str) -> TranscriptEntry {
         TranscriptEntry {
+            speech: None,
             id: id.into(),
             source: "microphone".into(),
             text: text.into(),

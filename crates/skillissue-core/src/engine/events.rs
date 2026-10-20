@@ -13,6 +13,15 @@ pub struct ContextStatus {
     pub latest_transcript_at: Option<u64>,
     pub transcript_entries: usize,
     pub transcriptions: Vec<crate::jobs::TranscriptionProgress>,
+    pub live_audio: Vec<LiveAudioStatus>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct LiveAudioStatus {
+    pub source: String,
+    pub state: String,
+    /// Provisional text is never written to history or used as answer context.
+    pub interim: String,
 }
 
 #[derive(Clone)]

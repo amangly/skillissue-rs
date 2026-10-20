@@ -901,6 +901,7 @@ async fn saved_questions_use_only_selected_evidence_and_preserve_other_live_cont
                 &settings,
                 false,
                 &TranscriptEntry {
+                    speech: None,
                     id: "selected-speech".into(),
                     source: "system".into(),
                     text: "SELECTED-EVIDENCE: delivery is Tuesday".into(),
@@ -921,6 +922,7 @@ async fn saved_questions_use_only_selected_evidence_and_preserve_other_live_cont
                 &settings,
                 false,
                 &TranscriptEntry {
+                    speech: None,
                     id: "other-speech".into(),
                     source: "microphone".into(),
                     text: "OTHER-LIVE-PRIVATE-SPEECH".into(),
@@ -1379,6 +1381,7 @@ async fn in_flight_notes_keep_provider_configuration_stable_until_the_response_f
             &engine.config().unwrap().settings,
             false,
             &TranscriptEntry {
+                speech: None,
                 id: "evidence".into(),
                 source: "microphone".into(),
                 text: "We agreed to review the changes on Friday.".into(),
