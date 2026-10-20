@@ -33,11 +33,13 @@ impl NativeEngine {
     }
     pub fn context_status(&self) -> Result<ContextStatus, String> {
         let session = lock(&self.session)?;
+        let jobs = lock(&self.jobs)?;
         Ok(ContextStatus {
             capturing: self.active.load(Ordering::SeqCst),
-            pending_transcriptions: lock(&self.jobs)?.pending_count(),
+            pending_transcriptions: jobs.pending_count(),
             latest_transcript_at: session.transcript.back().map(|entry| entry.created_at),
             transcript_entries: session.transcript.len(),
+            transcriptions: jobs.progress(),
         })
     }
     pub fn list_sessions(
@@ -133,6 +135,7 @@ impl NativeEngine {
             *session = Session::default();
         }
         self.epoch.fetch_add(1, Ordering::SeqCst);
+        lock(&self.jobs)?.clear_progress();
         drop(session);
         self.publish_snapshot();
         self.emit(EngineEvent::HistoryChanged);

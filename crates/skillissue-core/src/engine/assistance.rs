@@ -281,6 +281,11 @@ impl NativeEngine {
         } = context;
         let plan = super::context::ContextPlan::new(settings, screenshot.is_some());
         let engine = self.clone();
+        self.emit(EngineEvent::Assistant {
+            id: id.into(),
+            kind: "preparing".into(),
+            text: "Preparing context and waiting for recent speech…".into(),
+        });
         let flush_audio = async move {
             let capture_engine = engine.clone();
             tokio::task::spawn_blocking(move || {
@@ -293,7 +298,7 @@ impl NativeEngine {
             .map_err(|error| format!("Flush audio: {error}"))??;
             let watermark = lock(&engine.jobs)?.watermark();
             engine
-                .wait_for_transcript(watermark, std::time::Duration::from_millis(1200))
+                .wait_for_transcript(watermark, std::time::Duration::from_secs(4))
                 .await
         };
         let references = plan.references;
@@ -317,6 +322,20 @@ impl NativeEngine {
             }
         })
         .await?;
+        if audio_wait.pending > 0 {
+            let message = "Recent speech is still being transcribed. Your question has not been sent to the answer provider. Wait for transcription to finish, then send it again.";
+            self.emit(EngineEvent::Assistant {
+                id: id.into(),
+                kind: "context".into(),
+                text: message.into(),
+            });
+            return Err(message.into());
+        }
+        self.emit(EngineEvent::Assistant {
+            id: id.into(),
+            kind: "prepared".into(),
+            text: String::new(),
+        });
         let (mut transcript, history) = {
             let session = lock(&self.session)?;
             let transcript = super::context::bounded_recent(
@@ -389,13 +408,6 @@ impl NativeEngine {
                 .and_then(|model| Self::fast_reasoning(&model));
         }
         let observed_model = request_settings.provider_chat_model().to_owned();
-        if audio_wait.pending > 0 {
-            self.emit(EngineEvent::Assistant {
-                id: id.into(),
-                kind: "context".into(),
-                text: "Recent speech was still being transcribed when the audio wait ended. This answer may omit it; ask again after transcription finishes.".into(),
-            });
-        }
         let provider_started = Instant::now();
         let first_token = Arc::new(std::sync::Mutex::new(None));
         let first_token_observer = first_token.clone();

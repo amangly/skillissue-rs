@@ -125,10 +125,10 @@ impl NativeEngine {
         let result = (|| {
             let configuration = lock(&self.configuration)?;
             let (settings, key) = configuration.transcription_configuration()?;
-            let job = lock(&self.jobs)?.submit();
             let created_at = now_ms().saturating_sub(
                 segment.samples.len() as u64 * 1000 / u64::from(segment.sample_rate.max(1)),
             );
+            let job = lock(&self.jobs)?.submit_segment(segment.source.clone(), created_at);
             let queued = QueuedSegment {
                 epoch: self.epoch.load(Ordering::SeqCst),
                 job,
@@ -140,7 +140,7 @@ impl NativeEngine {
             };
             if let Err(error) = self.transcriptions.try_send(queued) {
                 let queued = error.into_inner();
-                lock(&self.jobs)?.complete(job);
+                lock(&self.jobs)?.finish(job, crate::jobs::TranscriptionState::Failed);
                 self.jobs_done.notify_waiters();
                 self.gap(&queued.segment.source, created_at, "The transcription queue filled. Capture was stopped; this audio segment was not transcribed.");
                 return Err("Transcription cannot keep up. Capture has stopped; pending audio will finish processing.".into());
@@ -177,6 +177,9 @@ impl NativeEngine {
     }
 
     pub(super) async fn transcribe(self: Arc<Self>, queued: QueuedSegment) {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            jobs.transcribing(queued.job);
+        }
         let started = Instant::now();
         let queue_ms = started.duration_since(queued.queued_at).as_millis();
         let encoding_started = Instant::now();
@@ -199,7 +202,7 @@ impl NativeEngine {
             }
             let text = provider_result?;
             if text.trim().is_empty() {
-                return Ok(());
+                return Ok(false);
             }
             let entry = TranscriptEntry {
                 id: uuid::Uuid::new_v4().to_string(),
@@ -232,7 +235,7 @@ impl NativeEngine {
             drop(session);
             self.emit(EngineEvent::Transcript(entry));
             self.emit(EngineEvent::HistoryChanged);
-            Ok::<(), String>(())
+            Ok::<bool, String>(true)
         })();
         let total_ms = started.elapsed().as_millis();
         if let Ok(_guard) = TRANSCRIPTION_LOG.lock()
@@ -255,11 +258,16 @@ impl NativeEngine {
             });
             let _ = writeln!(log, "{entry}");
         }
+        let state = match &persisted {
+            Ok(true) => crate::jobs::TranscriptionState::Ready,
+            Ok(false) => crate::jobs::TranscriptionState::NoSpeech,
+            Err(_) => crate::jobs::TranscriptionState::Failed,
+        };
         if let Err(error) = persisted {
             self.gap(&queued.segment.source, queued.created_at, &error);
         }
         if let Ok(mut jobs) = self.jobs.lock() {
-            jobs.complete(queued.job);
+            jobs.finish(queued.job, state);
         }
         self.jobs_done.notify_waiters();
     }

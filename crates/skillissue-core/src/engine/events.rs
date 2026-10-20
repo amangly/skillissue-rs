@@ -12,6 +12,7 @@ pub struct ContextStatus {
     pub pending_transcriptions: usize,
     pub latest_transcript_at: Option<u64>,
     pub transcript_entries: usize,
+    pub transcriptions: Vec<crate::jobs::TranscriptionProgress>,
 }
 
 #[derive(Clone)]

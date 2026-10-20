@@ -352,6 +352,26 @@ impl NativeView {
                                 .flex_1()
                                 .min_h_0()
                                 .overflow_y_scroll()
+                                .children(self.context.transcriptions.iter().enumerate().rev().filter(|(index, job)| {
+                                    use skillissue_core::jobs::TranscriptionState;
+                                    matches!(job.state, TranscriptionState::Queued | TranscriptionState::Transcribing | TranscriptionState::Failed)
+                                        || *index + 3 >= self.context.transcriptions.len()
+                                }).map(|(_, job)| {
+                                    div()
+                                        .id(SharedString::from(format!("transcription-progress-{}", job.id)))
+                                        .debug_selector(move || format!("transcription-progress-{}", job.id))
+                                        .py_1()
+                                        .text_size(px(11.))
+                                        .text_color(rgb(secondary))
+                                        .child(format!(
+                                            "{} · {} · {}",
+                                            if job.source == "microphone" { "Microphone" } else { "System audio" },
+                                            chrono::DateTime::from_timestamp_millis(job.created_at as i64)
+                                                .map(|time| time.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
+                                                .unwrap_or_default(),
+                                            job.state.label(),
+                                        ))
+                                }))
                                 .children(self.snapshot.transcript.iter().map(|entry| {
                                     div()
                                         .py_2()

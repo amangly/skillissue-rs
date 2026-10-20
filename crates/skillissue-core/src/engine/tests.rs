@@ -252,10 +252,10 @@ async fn late_transcription_is_saved_and_used_by_the_next_question() {
                 let body = r#"{"text":"The agreed budget is forty dollars."}"#;
                 audio.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
             });
-            for index in 0..2 {
+            for _ in 0..1 {
                 let (mut chat, _) = listener.accept().await.unwrap();
                 let payload = request(&mut chat).await.to_string();
-                assert_eq!(payload.contains("The agreed budget is forty dollars."), index == 1);
+                assert!(payload.contains("The agreed budget is forty dollars."));
                 let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Answer\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
                 chat.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
             }
@@ -264,7 +264,9 @@ async fn late_transcription_is_saved_and_used_by_the_next_question() {
         engine.queue_transcription(AudioSegment {
             source: "microphone".into(), sample_rate: 8_000, samples: vec![0.01; 80],
         });
-        engine.assist("What was agreed?".into(), None).await.unwrap();
+        let error = engine.assist("What was agreed?".into(), None).await.unwrap_err();
+        assert!(error.contains("has not been sent"));
+        assert!(engine.snapshot().unwrap().messages.is_empty());
         let mut warned = false;
         while let Ok(event) = events.try_recv() {
             if let EngineEvent::Assistant { kind, .. } = event {
@@ -282,8 +284,11 @@ async fn late_transcription_is_saved_and_used_by_the_next_question() {
         server.await.unwrap();
         let log = std::fs::read_to_string(fixture.0.join("provider-requests.log")).unwrap();
         let entries: Vec<serde_json::Value> = log.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
-        assert_eq!(entries[0]["audioPendingAtWaitEnd"], 1);
-        assert_eq!(entries[1]["audioPendingAtWaitEnd"], 0);
+        assert_eq!(entries.len(), 1, "only the explicit retry sends an answer request");
+        assert_eq!(entries[0]["audioPendingAtWaitEnd"], 0);
+        assert_eq!(engine.context_status().unwrap().transcriptions[0].state, crate::jobs::TranscriptionState::Ready);
+        engine.new_session().unwrap();
+        assert!(engine.context_status().unwrap().transcriptions.is_empty());
         engine.shutdown().await.unwrap();
     }).await.expect("late transcription workflow timed out");
 }
@@ -294,8 +299,43 @@ async fn pending_audio_notice_is_not_question_context() {
     let engine = NativeEngine::open(fixture.0.clone()).unwrap();
     lock(&engine.jobs).unwrap().submit();
     let error = engine.assist(String::new(), None).await.unwrap_err();
-    assert!(error.starts_with("Type a question"), "{error}");
+    assert!(error.contains("has not been sent"), "{error}");
     assert!(engine.snapshot().unwrap().messages.is_empty());
+}
+
+#[tokio::test]
+async fn cancelling_while_waiting_for_speech_never_sends_an_answer_request() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let fixture = Fixture::new(&format!("http://{}/v1", listener.local_addr().unwrap()));
+    let engine = NativeEngine::open(fixture.0.clone()).unwrap();
+    let job = lock(&engine.jobs).unwrap().submit();
+    let cancel = CancellationToken::new();
+    let trigger = cancel.clone();
+    let mut events = engine.subscribe();
+    let canceller = async move {
+        while let Ok(event) = events.recv().await {
+            if matches!(event, EngineEvent::Assistant { kind, .. } if kind == "preparing") {
+                trigger.cancel();
+                break;
+            }
+        }
+    };
+    let request = engine.assist_with_cancel("What did they say?".into(), None, cancel);
+    let (result, ()) = tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::join!(request, canceller)
+    })
+    .await
+    .unwrap();
+    assert!(result.unwrap_err().contains("cancelled"));
+    assert!(lock(&engine.assistant).unwrap().is_none());
+    assert!(engine.snapshot().unwrap().messages.is_empty());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(30), listener.accept())
+            .await
+            .is_err()
+    );
+    lock(&engine.jobs).unwrap().complete(job);
+    engine.shutdown().await.unwrap();
 }
 impl Fixture {
     fn new(base: &str) -> Self {

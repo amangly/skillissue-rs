@@ -876,11 +876,22 @@ impl NativeView {
                         self.audio_retry_prompt = self.last_submitted_prompt.clone();
                         cx.notify();
                     }
+                    "preparing" => {
+                        self.overlay_ui.audio_notice = Some(text);
+                        cx.notify();
+                    }
+                    "prepared" => {
+                        self.overlay_ui.audio_notice = None;
+                        cx.notify();
+                    }
                     "delta" => {
                         self.stream.push_str(&text);
                         cx.notify();
                     }
                     "done" | "cancelled" => {
+                        if self.audio_retry_prompt.is_none() {
+                            self.overlay_ui.audio_notice = None;
+                        }
                         self.active_assistant_id = None;
                         self.busy = false;
                         self.stream.clear();
@@ -888,6 +899,9 @@ impl NativeView {
                         cx.notify();
                     }
                     "error" => {
+                        if self.audio_retry_prompt.is_none() {
+                            self.overlay_ui.audio_notice = None;
+                        }
                         self.active_assistant_id = None;
                         self.busy = false;
                         self.error = Some(text);

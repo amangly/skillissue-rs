@@ -20,6 +20,7 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 hound = "3.5"
+earshot = "=1.2.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 pdf-extract = "0.12.1"

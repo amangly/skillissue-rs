@@ -3,6 +3,13 @@
 The application has one local session engine and two provider modes. Selecting a
 provider never uploads previous sessions by itself.
 
+Before answering, the app flushes captured speech and waits briefly for its
+transcription. If that speech is still processing, the question stays available
+to send again and no answer request is made. The transcript drawer shows the
+progress of individual audio segments. Failed audio requests are not replayed
+automatically; their gap remains visible. Audio transcription itself can still
+consume provider credits.
+
 BYOK also offers **Palepale account** independently for Text, Audio, and Images.
 Connect Palepale once, return to BYOK, then select it for the roles you want.
 For example, keep DeepSeek for Text and use Palepale for Audio. Selecting Palepale

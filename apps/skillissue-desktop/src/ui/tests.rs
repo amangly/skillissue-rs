@@ -2007,6 +2007,87 @@ fn overlay_errors_reserve_space_below_the_composer(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn transcription_progress_and_preparation_survive_window_updates(cx: &mut TestAppContext) {
+    use skillissue_core::jobs::{TranscriptionProgress, TranscriptionState};
+    let fixture = Fixture::new(cx);
+    fixture.update(cx, |view, window, cx| {
+        view.page = Page::Live;
+        view.review_id = "chat".into();
+        view.gallery = true;
+        view.expanded = true;
+        view.overlay_ui.chat_shown = true;
+        view.overlay_ui.transcript = true;
+        view.context.transcriptions = [
+            TranscriptionState::Queued,
+            TranscriptionState::Transcribing,
+            TranscriptionState::Ready,
+            TranscriptionState::NoSpeech,
+            TranscriptionState::Failed,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(id, state)| TranscriptionProgress {
+            id: id as u64,
+            source: "microphone".into(),
+            created_at: 0,
+            state,
+        })
+        .collect();
+        for (kind, text) in [
+            ("start", "What was agreed?"),
+            ("preparing", "Waiting for recent speech…"),
+        ] {
+            view.on_event(
+                skillissue_core::EngineEvent::Assistant {
+                    id: "current".into(),
+                    kind: kind.into(),
+                    text: text.into(),
+                },
+                window,
+                cx,
+            );
+        }
+        assert!(view.audio_retry_prompt.is_none());
+        view.on_event(
+            skillissue_core::EngineEvent::Assistant {
+                id: "old".into(),
+                kind: "prepared".into(),
+                text: String::new(),
+            },
+            window,
+            cx,
+        );
+        assert!(view.overlay_ui.audio_notice.is_some());
+        view.on_event(
+            skillissue_core::EngineEvent::Assistant {
+                id: "current".into(),
+                kind: "cancelled".into(),
+                text: String::new(),
+            },
+            window,
+            cx,
+        );
+        assert!(view.overlay_ui.audio_notice.is_none());
+        assert!(!view.busy);
+    });
+    fixture.render(cx);
+    let mut visual = gpui_kit::VisualTestContext::from_window(fixture.window, cx);
+    for selector in [
+        "transcription-progress-0",
+        "transcription-progress-1",
+        "transcription-progress-2",
+        "transcription-progress-3",
+        "transcription-progress-4",
+    ] {
+        assert!(
+            visual.debug_bounds(selector).is_some(),
+            "{selector} is missing"
+        );
+    }
+    assert!(!fixture.unused_data_dir.exists());
+}
+
+#[gpui_kit::test]
 fn pending_audio_notice_survives_completion_and_clears_for_the_next_question(
     cx: &mut TestAppContext,
 ) {

@@ -5,6 +5,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
+#[cfg(any(windows, test))]
+pub use processing::Segmenter as SpeechSegmenter;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureOptions {
@@ -267,82 +270,258 @@ mod processing {
         Ok(())
     }
 
+    /// Streaming speech detector and bounded mono 16 kHz segment builder.
+    /// One instance belongs to one device stream. `finish` flushes pending audio
+    /// without resetting the detector, so asking a question can continue capture.
     pub struct Segmenter {
         source: String,
         sample_rate: u32,
+        detector: earshot::Detector,
+        resample_weight: u32,
+        resample_sum: f64,
+        frame: Vec<f32>,
         max_samples: usize,
         pre_roll: VecDeque<f32>,
         samples: Vec<f32>,
         silence_samples: usize,
         voiced_samples: usize,
+        continuation: bool,
     }
 
     impl Segmenter {
         pub fn new(source: &str, sample_rate: u32, chunk_seconds: u32) -> Self {
-            let max_samples = sample_rate as usize * chunk_seconds.clamp(3, 20) as usize;
+            assert!(
+                (8_000..=192_000).contains(&sample_rate),
+                "unsupported capture sample rate"
+            );
+            let max_samples = 16_000 * chunk_seconds.clamp(3, 20) as usize;
             Self {
                 source: source.to_owned(),
                 sample_rate,
+                detector: earshot::Detector::default(),
+                resample_weight: 0,
+                resample_sum: 0.0,
+                frame: Vec::with_capacity(256),
                 max_samples,
-                pre_roll: VecDeque::with_capacity(sample_rate as usize / 5),
+                pre_roll: VecDeque::with_capacity(4_800),
                 samples: Vec::with_capacity(max_samples),
                 silence_samples: 0,
                 voiced_samples: 0,
+                continuation: false,
             }
         }
 
         pub fn push(&mut self, input: &[f32], emit: &dyn Fn(AudioSegment)) {
-            for block in input.chunks((self.sample_rate as usize / 50).max(1)) {
-                let energy = block.iter().map(|s| s * s).sum::<f32>() / block.len() as f32;
-                // This is a conservative energy gate, not a speech-recognition VAD.
-                let voiced = energy >= 0.006_f32.powi(2);
-                if self.samples.is_empty() && !voiced {
-                    for &sample in block {
-                        self.pre_roll.push_back(sample);
-                        if self.pre_roll.len() > self.sample_rate as usize / 5 {
-                            self.pre_roll.pop_front();
+            // Area resampling carries fractional samples across WASAPI packets.
+            // Both inference and emitted audio use mono 16 kHz, independent of
+            // packet sizes and the device's native rate (including 44.1 kHz).
+            for &sample in input {
+                let mut remaining = 16_000;
+                while remaining > 0 {
+                    let weight = remaining.min(self.sample_rate - self.resample_weight);
+                    self.resample_sum += f64::from(sanitize_sample(sample)) * f64::from(weight);
+                    self.resample_weight += weight;
+                    remaining -= weight;
+                    if self.resample_weight == self.sample_rate {
+                        self.frame
+                            .push((self.resample_sum / f64::from(self.sample_rate)) as f32);
+                        self.resample_weight = 0;
+                        self.resample_sum = 0.0;
+                        if self.frame.len() == 256 {
+                            self.classify_frame(emit);
                         }
                     }
-                    continue;
-                }
-                if self.samples.is_empty() {
-                    self.samples.extend(self.pre_roll.drain(..));
-                }
-                for part in block.chunks(self.max_samples - self.samples.len()) {
-                    self.samples.extend_from_slice(part);
-                    if voiced {
-                        self.voiced_samples += part.len();
-                        self.silence_samples = 0;
-                    } else {
-                        self.silence_samples += part.len();
-                    }
-                    if self.samples.len() >= self.max_samples {
-                        self.finish(emit);
-                    }
-                }
-                if self.silence_samples >= self.sample_rate as usize * 3 / 5 {
-                    self.finish(emit);
                 }
             }
         }
 
+        fn classify_frame(&mut self, emit: &dyn Fn(AudioSegment)) {
+            let mut frame = [0.0; 256];
+            let count = self.frame.len();
+            frame[..count].copy_from_slice(&self.frame);
+            self.frame.clear();
+            let voiced = self.detector.predict_f32(&frame) >= 0.5;
+            self.accept_frame(&frame[..count], voiced, emit);
+        }
+
+        fn accept_frame(&mut self, block: &[f32], voiced: bool, emit: &dyn Fn(AudioSegment)) {
+            if self.samples.is_empty() && !voiced && !self.continuation {
+                for &sample in block {
+                    self.pre_roll.push_back(sample);
+                    if self.pre_roll.len() > 4_800 {
+                        self.pre_roll.pop_front();
+                    }
+                }
+                return;
+            }
+            if self.samples.is_empty() {
+                self.samples.extend(self.pre_roll.drain(..));
+            }
+            for part in block.chunks(self.max_samples - self.samples.len()) {
+                self.samples.extend_from_slice(part);
+                if voiced {
+                    self.voiced_samples += part.len();
+                    self.silence_samples = 0;
+                } else {
+                    self.silence_samples += part.len();
+                }
+                if self.samples.len() >= self.max_samples {
+                    let continuation = self.continuation || self.voiced_samples >= 1_280;
+                    self.emit_segment(emit);
+                    self.continuation = continuation;
+                }
+            }
+            if self.silence_samples >= 5_120 {
+                self.emit_segment(emit);
+            }
+        }
+
         pub fn finish(&mut self, emit: &dyn Fn(AudioSegment)) {
+            // Flush a partial inference frame without adding padding to output.
+            if self.resample_weight > 0 {
+                self.frame
+                    .push((self.resample_sum / f64::from(self.resample_weight)) as f32);
+                self.resample_weight = 0;
+                self.resample_sum = 0.0;
+            }
+            if !self.frame.is_empty() {
+                self.classify_frame(emit);
+            }
+            self.emit_segment(emit);
+        }
+
+        fn emit_segment(&mut self, emit: &dyn Fn(AudioSegment)) {
             if self.samples.is_empty() {
                 self.pre_roll.clear();
+                self.continuation = false;
                 return;
             }
             let samples =
                 std::mem::replace(&mut self.samples, Vec::with_capacity(self.max_samples));
-            if self.voiced_samples >= self.sample_rate as usize * 80 / 1000 {
+            if self.voiced_samples >= 1_280 || (self.continuation && self.voiced_samples > 0) {
                 emit(AudioSegment {
                     source: self.source.clone(),
-                    sample_rate: self.sample_rate,
+                    sample_rate: 16_000,
                     samples,
                 });
             }
             self.silence_samples = 0;
             self.voiced_samples = 0;
+            self.continuation = false;
             self.pre_roll.clear();
+        }
+    }
+
+    #[cfg(test)]
+    mod segmentation_tests {
+        use super::*;
+        use std::cell::RefCell;
+
+        #[test]
+        fn speech_boundaries_keep_pre_roll_and_bound_continuous_speech() {
+            let output = RefCell::new(Vec::new());
+            let emit = |segment| output.borrow_mut().push(segment);
+            let mut segmenter = Segmenter::new("microphone", 48_000, 3);
+            // Script classifier decisions to test boundaries independently of
+            // model accuracy; constant amplitude is not a speech fixture.
+            for _ in 0..100 {
+                segmenter.accept_frame(&[0.0; 256], false, &emit);
+            }
+            for _ in 0..440 {
+                segmenter.accept_frame(&[0.1; 256], true, &emit);
+            }
+            segmenter.finish(&emit);
+            let output = output.borrow();
+            assert_eq!(output.len(), 3);
+            assert!(
+                output
+                    .iter()
+                    .all(|s| s.sample_rate == 16_000 && s.samples.len() <= 48_000)
+            );
+            assert_eq!(
+                output.iter().map(|s| s.samples.len()).sum::<usize>(),
+                4_800 + 440 * 256
+            );
+        }
+
+        #[test]
+        fn silence_endpoint_and_short_noise_do_not_create_empty_jobs() {
+            let output = RefCell::new(Vec::new());
+            let emit = |segment| output.borrow_mut().push(segment);
+            let mut segmenter = Segmenter::new("system", 16_000, 8);
+            segmenter.accept_frame(&[0.1; 256], true, &emit);
+            for _ in 0..20 {
+                segmenter.accept_frame(&[0.0; 256], false, &emit);
+            }
+            assert!(output.borrow().is_empty());
+            for _ in 0..10 {
+                segmenter.accept_frame(&[0.1; 256], true, &emit);
+            }
+            for _ in 0..19 {
+                segmenter.accept_frame(&[0.0; 256], false, &emit);
+            }
+            assert!(output.borrow().is_empty());
+            segmenter.accept_frame(&[0.0; 256], false, &emit);
+            assert_eq!(output.borrow().len(), 1);
+            segmenter.finish(&emit);
+            assert_eq!(output.borrow().len(), 1);
+        }
+
+        #[test]
+        fn packet_boundaries_do_not_change_resampling_or_detection() {
+            for rate in [8_000, 44_100, 48_000, 192_000] {
+                let input: Vec<_> = (0..rate / 2 + 7)
+                    .map(|i| ((i as f32 * 0.031).sin() * 0.2).clamp(-1.0, 1.0))
+                    .collect();
+                let run = |packet_size| {
+                    let output = RefCell::new(Vec::new());
+                    let mut segmenter = Segmenter::new("microphone", rate, 3);
+                    for packet in input.chunks(packet_size) {
+                        segmenter.push(packet, &|segment: AudioSegment| {
+                            output.borrow_mut().push(segment.samples)
+                        });
+                    }
+                    let frame = segmenter.frame.clone();
+                    let pre_roll = segmenter.pre_roll.clone();
+                    let partial = segmenter.samples.clone();
+                    segmenter
+                        .finish(&|segment: AudioSegment| output.borrow_mut().push(segment.samples));
+                    (output.into_inner(), frame, pre_roll, partial)
+                };
+                assert_eq!(run(input.len()), run(137));
+                assert_eq!(run(input.len()), run(1));
+            }
+        }
+
+        #[test]
+        fn hard_chunk_limit_keeps_the_short_tail_of_an_existing_utterance() {
+            let output = RefCell::new(Vec::new());
+            let emit = |segment| output.borrow_mut().push(segment);
+            let mut segmenter = Segmenter::new("microphone", 16_000, 3);
+            for _ in 0..188 {
+                segmenter.accept_frame(&[0.1; 256], true, &emit);
+            }
+            segmenter.finish(&emit);
+            assert_eq!(output.borrow().len(), 2);
+            assert_eq!(output.borrow()[1].samples.len(), 128);
+        }
+
+        #[test]
+        fn silence_after_a_hard_boundary_ends_continuation_without_an_audio_job() {
+            let output = RefCell::new(Vec::new());
+            let emit = |segment| output.borrow_mut().push(segment);
+            let mut segmenter = Segmenter::new("microphone", 16_000, 3);
+            for _ in 0..187 {
+                segmenter.accept_frame(&[0.1; 256], true, &emit);
+            }
+            segmenter.accept_frame(&[0.1; 128], true, &emit);
+            assert_eq!(output.borrow().len(), 1);
+            for _ in 0..20 {
+                segmenter.accept_frame(&[0.0; 256], false, &emit);
+            }
+            segmenter.accept_frame(&[0.1; 256], true, &emit);
+            segmenter.finish(&emit);
+            assert_eq!(output.borrow().len(), 1);
         }
     }
 }
@@ -626,28 +805,17 @@ mod tests {
     }
 
     #[test]
-    fn segmentation_discards_silence_and_emits_bounded_speech_on_stop() {
+    fn neural_detection_discards_silence_at_supported_device_rates() {
         let emitted = Mutex::new(Vec::new());
         let emit = |segment| emitted.lock().unwrap().push(segment);
-        let mut segmenter = Segmenter::new("system", 16_000, 3);
-        segmenter.push(&vec![0.0; 16_000], &emit);
+        for rate in [8_000, 16_000, 44_100, 48_000, 96_000, 192_000] {
+            let mut segmenter = Segmenter::new("system", rate, 3);
+            for packet in vec![0.0; rate as usize].chunks(137) {
+                segmenter.push(packet, &emit);
+            }
+            segmenter.finish(&emit);
+        }
         assert!(emitted.lock().unwrap().is_empty());
-        segmenter.push(&vec![0.2; 16_000 * 7], &emit);
-        segmenter.finish(&emit);
-        let segments = emitted.lock().unwrap();
-        assert_eq!(segments.len(), 3);
-        assert!(
-            segments
-                .iter()
-                .all(|segment| segment.samples.len() <= 16_000 * 3)
-        );
-        assert_eq!(
-            segments
-                .iter()
-                .map(|segment| segment.samples.len())
-                .sum::<usize>(),
-            16_000 * 7 + 3_200
-        );
     }
 
     #[test]

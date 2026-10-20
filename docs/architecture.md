@@ -35,6 +35,23 @@ before asynchronous work, and rejects replies from obsolete provider or session
 generations. Accepted transcription jobs drain before capture or session changes
 complete.
 
+Audio capture uses an embedded Earshot neural detector per device stream.
+Streaming resampling produces mono 16 kHz audio and fixed 16 ms inference
+frames independently of WASAPI packet boundaries. Segments retain 300 ms of
+pre-roll, end after 320 ms of detected non-speech, and obey the configured
+maximum duration. Flushing a question preserves detector state while sending
+the pending partial segment.
+
+The transcript drawer shows queued, transcribing, saved, empty, and failed
+segments. Progress keeps pending work plus a bounded recent completion list,
+cleared when switching sessions; it does not persist audio or duplicate text.
+Questions flush capture and wait up to four seconds for the accepted jobs at
+that point. Later speech does not extend the wait. If those jobs remain pending,
+no answer request is sent and the composer retains the question for explicit
+retry. Context preparation is cancellable and has a ten-second overall bound.
+Raw audio is sent only through the configured Audio adapter, not forwarded to
+Text or Images as a fallback.
+
 ## Desktop and platform
 
 `skillissue-desktop` owns the GPUI root, dashboard, overlay, settings, modes,
