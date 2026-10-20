@@ -18,6 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/amangly/skillissue-rs/releases">Download</a> ·
+  <a href="https://github.com/amangly/skillissue-rs/releases/download/v0.1.2/skillissue-demo.mp4">Watch demo</a> ·
   <a href="#get-started">Build</a> ·
   <a href="docs/providers.md">Providers</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
