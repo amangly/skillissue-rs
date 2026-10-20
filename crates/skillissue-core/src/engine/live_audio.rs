@@ -90,18 +90,35 @@ impl NativeEngine {
                     (source, Command::Boundary { job, ending }, Some(job))
                 }
             };
-            let sent = senders
-                .get(&source)
-                .is_some_and(|sender| sender.try_send(command).is_ok());
-            if !sent {
-                if let Some(job) = job {
-                    lock(&engine.jobs)?.finish(job, TranscriptionState::Failed);
-                    engine.jobs_done.notify_waiters();
-                }
-                engine.gap(&source, now_ms(), "Live audio queue filled or closed. Capture stopped; unsent audio was not replayed.");
-                return Err("Live audio could not keep up or its connection closed. Capture stopped; unsent audio was not replayed.".into());
+            let sent = senders.get(&source).map(|sender| sender.try_send(command));
+            if matches!(sent, Some(Ok(()))) {
+                return Ok(());
             }
-            Ok(())
+            if let Some(job) = job {
+                lock(&engine.jobs)?.finish(job, TranscriptionState::Failed);
+                engine.jobs_done.notify_waiters();
+            }
+            let error = match sent {
+                Some(Err(mpsc::error::TrySendError::Closed(_))) => {
+                    let reported = lock(&engine.live_audio)?
+                        .iter()
+                        .any(|status| status.source == source && status.state == "Disconnected");
+                    if reported {
+                        // The provider worker has already reported the cause.
+                        // Capture can still deliver a frame or Stop boundary
+                        // while shutdown is being scheduled. Do not overwrite
+                        // that cause with a second, generic queue error.
+                        return Ok(());
+                    }
+                    "Live transcription worker closed unexpectedly. Capture stopped; unsent audio was not replayed."
+                }
+                Some(Err(mpsc::error::TrySendError::Full(_))) => {
+                    "Live audio queue is full. Capture stopped; unsent audio was not replayed."
+                }
+                _ => "No live transcription connection exists for this audio source.",
+            };
+            engine.gap(&source, now_ms(), error);
+            Err(error.into())
         })
     }
 
@@ -285,7 +302,7 @@ mod tests {
                 }
             }
             for response in [
-                serde_json::json!({"type":"Results","start":0,"duration":0.1,"is_final":true,"channel":{"alternatives":[{"transcript":"Saved before answering.","words":[]}]}}),
+                serde_json::json!({"type":"Results","start":0,"duration":0.1,"is_final":true,"channel":{"alternatives":[{"transcript":"Saved before answering.","words":[{"word":"Saved","start":0,"end":0.12}]}]}}),
                 serde_json::json!({"type":"Metadata"}),
             ] {
                 socket
@@ -421,6 +438,47 @@ mod tests {
         );
         assert!(matches!(receiver.try_recv(), Ok(Command::Audio(_))));
         assert!(receiver.try_recv().is_err());
+        drop(callback);
+        drop(engine);
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn reported_disconnect_keeps_original_error_and_resolves_late_boundary() {
+        let path = std::env::temp_dir().join(format!("skillissue-closed-{}", uuid::Uuid::new_v4()));
+        let engine = NativeEngine::open(path.clone()).unwrap();
+        lock(&engine.live_audio).unwrap().push(LiveAudioStatus {
+            source: "microphone".into(),
+            state: "Disconnected".into(),
+            interim: String::new(),
+        });
+        let original = "Deepgram connection failed; pending audio was not replayed.";
+        engine.gap("microphone", 1000, original);
+        let (sender, receiver) = mpsc::channel(1);
+        let callback = engine.live_callback(std::collections::BTreeMap::from([(
+            "microphone".into(),
+            sender,
+        )]));
+        drop(receiver);
+        callback(StreamEvent::Frame(LiveFrame {
+            source: "microphone".into(),
+            pcm: vec![0; 3200],
+            created_at: 1000,
+        }))
+        .unwrap();
+        callback(StreamEvent::Boundary {
+            source: "microphone".into(),
+            ending: true,
+        })
+        .unwrap();
+        assert_eq!(lock(&engine.jobs).unwrap().pending_count(), 0);
+        assert_eq!(
+            lock(&engine.jobs).unwrap().progress()[0].state,
+            TranscriptionState::Failed
+        );
+        let gaps = std::fs::read_to_string(path.join("capture-gaps.jsonl")).unwrap();
+        assert_eq!(gaps.lines().count(), 1);
+        assert!(gaps.contains(original));
         drop(callback);
         drop(engine);
         std::fs::remove_dir_all(path).unwrap();

@@ -72,10 +72,15 @@ pub(crate) fn parse(value: &Value, key: &str) -> Result<ResultText, String> {
             if text.len() > 1024 || (!key.is_empty() && text.contains(key)) {
                 return Err("Deepgram returned an invalid word.".into());
             }
-            let start = millis(word, "start")?;
-            let end = millis(word, "end")?;
-            if end < start || start + 2 < start_ms || end > end_ms + 2 {
-                return Err("Deepgram returned inconsistent word timing.".into());
+            // Word alignment is optional metadata, not a capture boundary.
+            // A word can straddle the result's start/duration interval. Retain
+            // independently valid times; omit malformed alignment without
+            // discarding the recognized text or closing a healthy connection.
+            let (Ok(start), Ok(end)) = (millis(word, "start"), millis(word, "end")) else {
+                continue;
+            };
+            if end < start {
+                continue;
             }
             words.push(SpeechWord {
                 text: text.into(),
@@ -217,12 +222,47 @@ mod tests {
         let parsed = parse(&result(true), "test-secret").unwrap();
         assert_eq!(parsed.words[0].speaker, Some(0));
         assert_eq!(parsed.end_ms, 100);
-        let mut invalid = result(true);
-        invalid["channel"]["alternatives"][0]["words"][0]["end"] = json!(9);
-        assert!(parse(&invalid, "").is_err());
-        invalid = result(false);
+        let mut invalid = result(false);
         invalid["channel"]["alternatives"][0]["transcript"] = json!("test-secret");
         assert!(parse(&invalid, "test-secret").is_err());
+    }
+
+    #[test]
+    fn word_alignment_can_straddle_result_boundaries() {
+        for finalized in [false, true] {
+            let mut response = result(finalized);
+            response["start"] = json!(1.0);
+            response["channel"]["alternatives"][0]["words"][0]["start"] = json!(0.98);
+            response["channel"]["alternatives"][0]["words"][0]["end"] = json!(1.12);
+            let parsed = parse(&response, "").unwrap();
+            assert_eq!(parsed.text, "Hello.");
+            assert_eq!((parsed.start_ms, parsed.end_ms), (1000, 1100));
+            assert_eq!(
+                (parsed.words[0].start_ms, parsed.words[0].end_ms),
+                (980, 1120)
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_optional_alignment_does_not_discard_transcript() {
+        for (start, end) in [
+            (json!(0.2), json!(0.1)),
+            (json!(-1), json!(0.1)),
+            (Value::Null, json!(0.1)),
+            (json!(0), json!(604801)),
+            (json!("invalid"), json!(0.1)),
+        ] {
+            let mut response = result(true);
+            response["channel"]["alternatives"][0]["words"][0]["start"] = start;
+            response["channel"]["alternatives"][0]["words"][0]["end"] = end;
+            let parsed = parse(&response, "").unwrap();
+            assert_eq!(parsed.text, "Hello.");
+            assert!(parsed.words.is_empty());
+        }
+        let mut response = result(true);
+        response["duration"] = json!(-1);
+        assert!(parse(&response, "").is_err());
     }
 
     #[tokio::test]

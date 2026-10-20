@@ -3,6 +3,24 @@
 The repository separates deterministic tests, native startup checks, visual review,
 and real-device or service acceptance.
 
+The live-audio timing fix addresses two recorded microphone failures where
+`Deepgram returned inconsistent word timing` was followed by a generic
+closed-queue error. The parser previously required word alignment to fit inside
+the result interval within two milliseconds. It now validates word times
+independently and omits malformed optional alignment while retaining transcript
+text. Required result timing, response limits and credential redaction remain
+validated. Shutdown preserves the provider error instead of reporting a second
+queue failure.
+
+Regression tests cover words crossing result boundaries, invalid optional
+alignment, persistence before drain completion and late capture callbacks after
+a reported disconnect. These fixtures exercise the logged failure path; the
+original provider payload was not logged, so its exact timestamps are unknown.
+The fix passed 214 core/domain tests with one ignored, formatting and Clippy.
+A fresh 15-second live Nova-3 fixture completed with 12 interim and five final
+results, first interim at 2,062 ms, and no connection error. Physical microphone
+acceptance remains separate.
+
 The continuous-audio change passed 349 workspace tests with two ignored, plus
 Clippy with warnings denied and formatting checks on 2026-10-20.
 The release build and its `--smoke` startup check passed in a disposable profile:
