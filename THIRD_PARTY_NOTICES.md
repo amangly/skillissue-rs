@@ -3,10 +3,10 @@
 Project-owned code and maintainer-authorized artwork use Apache-2.0. Existing
 third-party code, fonts, and notices retain their original licenses.
 
-- Earshot 1.2.2 supplies embedded neural speech detection in Rust, used under MIT.
+- Earshot 1.2.2 provides embedded neural speech detection under the MIT license.
   Upstream commit: `c400f15bd232dda30a297eec90235bd09066cab7`.
   License: `assets/licenses/dependencies/earshot-MIT.txt`, copied from
-  https://github.com/pykeio/earshot/blob/c400f15bd232dda30a297eec90235bd09066cab7/LICENSE-MIT.
+  [upstream](https://github.com/pykeio/earshot/blob/c400f15bd232dda30a297eec90235bd09066cab7/LICENSE-MIT).
 - The GPUI Windows backend retains its Apache-2.0 license in
   `vendor/gpui-pre-windows/LICENSE-APACHE`; renderer changes are documented beside it.
 - Microsoft's adapted alpha-correction shader retains its MIT copyright and

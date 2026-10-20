@@ -21,41 +21,40 @@ providers or send paid requests.
 
 ## Audio workflow checks
 
-The capture tests exercise neural silence rejection at 8–192 kHz, fractional
-resampling across arbitrary packet boundaries, pre-roll, silence endpointing,
-short noise rejection, continuous-speech limits, and partial flushes. Scripted
-speech decisions test segmentation independently of model accuracy.
+The capture tests check neural silence rejection at 8–192 kHz and resampling
+across packet boundaries. Scripted speech decisions check pre-roll, silence
+cutoffs, short-segment rejection, duration limits, and partial flushes separately
+from model accuracy.
 Loopback integration tests verify that delayed transcription blocks the answer
 request, the explicit retry includes the saved transcript, and cancellation
 during preparation never sends an answer POST. GPUI tests cover progress states
 and stale/cancelled preparation messages.
 
-Run the offline benchmark with optional disposable mono/stereo WAV fixtures:
+Run the offline benchmark with optional mono/stereo WAV fixtures:
 
 ```console
 cargo run --locked --release -p skillissue-core --example audio_benchmark -- C:\fixtures\quiet-speech.wav C:\fixtures\overlap.wav
 ```
 
-With no arguments it measures synthetic silence, a tone, and broadband noise.
-Each WAV also runs at -20 dB gain, with synthetic clicks, and mixed with a
-three-second-shifted copy. These repeatable stress cases do not substitute for
-recordings of real keyboards or different overlapping speakers.
-It prints JSON with processing time, emitted segment duration, and the audio
-position when each segment became available (10 ms packet resolution).
-It opens no profile, microphone, or provider connection. It does not measure
-ASR accuracy or provider latency. Use the same reviewed recordings and hashes
-for comparisons; include quiet speech, keyboard noise, overlapping speakers,
-and long utterances. Synthetic noise checks alone do not establish speech
-accuracy. Real microphone/device and language acceptance remains required.
+Without arguments, the benchmark runs synthetic silence, a tone, and broadband
+noise. For each WAV, it also tests quieter audio (-20 dB), added clicks, and a mix
+with a copy shifted by three seconds. JSON output reports processing time,
+segment duration, and when each segment became available, to the nearest 10 ms
+input packet. The benchmark reads only the supplied files and uses no profile,
+microphone, or provider connection.
+
+Use the same recordings and hashes for comparisons. Real recordings of quiet
+speech, keyboards, overlapping speakers, and long utterances still need testing.
+This benchmark does not measure transcription accuracy or provider latency.
 
 An initial local check rejected the five-second silence and 440 Hz tone
-fixtures. Broadband noise produced a 528 ms startup segment: neural VAD can
-still send non-speech to transcription. A 60-second public speech fixture
-produced bounded segments; that is not a word-accuracy or missed-speech score.
-Fixture source: `https://models.silero.ai/vad_models/en.wav`.
+fixtures. Broadband noise produced a false positive: a 528 ms startup segment.
+A 60-second public speech fixture produced segments within the duration limit.
+These checks did not score missed speech or word accuracy.
+Fixture source: [Silero English sample](https://models.silero.ai/vad_models/en.wav).
 SHA-256: `89f17d9c94c4b31eb320f424628bcbc920abaddbee6e2760fd868bfb1d9a2e47`.
-The downloaded recording and benchmark output are local ignored artifacts,
-not bundled application assets.
+The downloaded recording and benchmark output stay in the ignored `target/`
+directory.
 
 ## History backup and recovery
 

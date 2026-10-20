@@ -39,18 +39,18 @@ Audio capture uses an embedded Earshot neural detector per device stream.
 Streaming resampling produces mono 16 kHz audio and fixed 16 ms inference
 frames independently of WASAPI packet boundaries. Segments retain 300 ms of
 pre-roll, end after 320 ms of detected non-speech, and obey the configured
-maximum duration. Flushing a question preserves detector state while sending
-the pending partial segment.
+maximum duration. Before a question, the app flushes the pending audio segment
+without resetting the detector.
 
 The transcript drawer shows queued, transcribing, saved, empty, and failed
-segments. Progress keeps pending work plus a bounded recent completion list,
-cleared when switching sessions; it does not persist audio or duplicate text.
-Questions flush capture and wait up to four seconds for the accepted jobs at
-that point. Later speech does not extend the wait. If those jobs remain pending,
-no answer request is sent and the composer retains the question for explicit
-retry. Context preparation is cancellable and has a ten-second overall bound.
-Raw audio is sent only through the configured Audio adapter, not forwarded to
-Text or Images as a fallback.
+segments. The engine tracks pending work and up to 32 completed jobs, then clears
+that list when switching sessions. Progress records contain no audio or transcript text.
+
+Questions flush capture and wait up to four seconds for jobs already accepted.
+Later speech does not extend the wait. If those jobs remain pending, the app
+keeps the question in the composer for the user to send again. It sends no answer
+request. Users can cancel context preparation, which times out after ten seconds.
+Only the configured Audio adapter receives raw audio.
 
 ## Desktop and platform
 
