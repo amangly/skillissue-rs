@@ -118,6 +118,7 @@ pub(super) fn notes_request(
         .system_prompt
         .len()
         .saturating_add(prompt.len())
+        .saturating_add(skillissue_domain::models::RESPONSE_STYLE.len())
         > MAX_NOTES_CONTEXT_BYTES
     {
         return Err("The saved session exceeds the notes context limit. Its original content remains saved.".into());

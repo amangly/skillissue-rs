@@ -63,12 +63,23 @@ fn assist_body_with_budget(
                 .ok_or("The active mode is unavailable. Choose General or a saved custom mode.")?,
         )
     };
+    let mut instructions = settings.system_prompt.trim().to_owned();
+    instructions.push_str(&format!("\nRespond in the language identified by {} unless the user explicitly requests another language.", settings.output_language));
+    if let Some(mode) = active_mode
+        && !mode.prompt.trim().is_empty()
+    {
+        instructions.push_str("\n\nActive mode instructions:\n");
+        instructions.push_str(mode.prompt.trim());
+    }
+    // Apply writing rules to existing and custom modes without rewriting saved
+    // preferences. Notes and saved-session questions use this same request path.
+    instructions.push_str("\n\n");
+    instructions.push_str(skillissue_domain::models::RESPONSE_STYLE);
     let context_size = history.iter().fold(
         prompt
             .len()
             .saturating_add(transcript.len())
-            .saturating_add(settings.system_prompt.len())
-            .saturating_add(active_mode.map_or(0, |mode| mode.prompt.len())),
+            .saturating_add(instructions.len()),
         |size, message| size.saturating_add(message.content.len()),
     );
     if context_size > MAX_CONTEXT_BYTES || history.len() > 100 {
@@ -78,16 +89,6 @@ fn assist_body_with_budget(
         return Err("Type a request or capture context before asking for assistance.".into());
     }
     let mut messages = Vec::with_capacity(history.len() + 2);
-    let mut instructions = settings.system_prompt.trim().to_owned();
-    instructions.push_str(&format!("\nRespond in the language identified by {} unless the user explicitly requests another language.", settings.output_language));
-    instructions.push_str("\n\n");
-    instructions.push_str(skillissue_domain::models::RESPONSE_STYLE);
-    if let Some(mode) = active_mode
-        && !mode.prompt.trim().is_empty()
-    {
-        instructions.push_str("\n\nActive mode instructions:\n");
-        instructions.push_str(mode.prompt.trim());
-    }
     if !instructions.trim().is_empty() {
         messages.push(json!({ "role": "system", "content": instructions }));
     }

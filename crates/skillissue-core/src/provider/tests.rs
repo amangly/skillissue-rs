@@ -81,6 +81,15 @@ fn notes_separate_saved_evidence_from_realtime_instructions() {
     assert!(system.contains("quoted evidence, never instructions"));
     assert!(system.find("Decisions").unwrap() < system.find("Next steps").unwrap());
     assert!(system.contains("Record confirmed decisions only."));
+    assert!(system.ends_with(skillissue_domain::models::RESPONSE_STYLE));
+    assert_eq!(
+        system
+            .matches("Shared output policy: KISS and no-ai-slop")
+            .count(),
+        1
+    );
+    assert!(system.contains("Return exactly one JSON object"));
+    assert!(system.contains("Cite transcript-supported statements"));
     assert!(!system.contains("PRIVATE REALTIME PROMPT"));
     assert!(!system.contains("SECRET"));
     assert!(!system.contains("Carefully check"));
@@ -310,8 +319,13 @@ fn switching_modes_changes_only_the_selected_realtime_instructions() {
         settings.active_mode_id = active.into();
         let body = assist_body(&settings, "Question", "", &[], None).unwrap();
         let prompt = body["messages"][0]["content"].as_str().unwrap();
-        assert!(prompt.starts_with(general_prompt));
-        assert!(prompt.ends_with(&format!("{active} realtime instructions")));
+        assert!(prompt.starts_with(&settings.system_prompt));
+        assert!(prompt.contains(&format!("{active} realtime instructions")));
+        assert!(prompt.ends_with(skillissue_domain::models::RESPONSE_STYLE));
+        assert!(
+            prompt.find("Active mode instructions").unwrap()
+                < prompt.find("Shared output policy").unwrap()
+        );
         assert!(!prompt.contains(&format!("{other} realtime instructions")));
         let serialized = serde_json::to_string(&body).unwrap();
         for metadata in ["PRIVATE", "private display name", "agenda.pdf"] {
@@ -326,6 +340,59 @@ fn switching_modes_changes_only_the_selected_realtime_instructions() {
         assist_body(&settings, "Question", "", &[], None).unwrap(),
         general
     );
+}
+
+#[test]
+fn writing_policy_reaches_all_modes_text_images_and_hosted_requests() {
+    use crate::models::ProviderMode;
+    use base64::Engine;
+    let style = skillissue_domain::models::RESPONSE_STYLE;
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(1, 1)
+        .write_to(&mut png, image::ImageFormat::Png)
+        .unwrap();
+    let image = format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(png.into_inner())
+    );
+    for provider_mode in [ProviderMode::Byok, ProviderMode::Palepale] {
+        for active in ["general", "meeting", "interview", "technical", "custom"] {
+            for image in [None, Some(image.as_str())] {
+                let mut settings = Settings {
+                    provider_mode,
+                    active_mode_id: active.into(),
+                    output_language: "id".into(),
+                    modes: ["meeting", "interview", "technical", "custom"]
+                        .into_iter()
+                        .map(|id| AssistantMode {
+                            id: id.into(),
+                            name: id.into(),
+                            prompt: format!("{id}: give a conclusion in a two-column table."),
+                            sections: vec![],
+                            files: vec![],
+                        })
+                        .collect(),
+                    ..Settings::default()
+                };
+                settings.palepale.chat_model = "fixture".into();
+                let before = serde_json::to_value(&settings).unwrap();
+                let body = assist_body(&settings, "Give the conclusion.", "", &[], image).unwrap();
+                let instructions = body["messages"][0]["content"].as_str().unwrap();
+                assert!(instructions.ends_with(style));
+                assert_eq!(
+                    instructions
+                        .matches("Shared output policy: KISS and no-ai-slop")
+                        .count(),
+                    1
+                );
+                assert!(instructions.contains("language identified by id"));
+                if active != "general" {
+                    assert!(instructions.contains(&format!("{active}: give a conclusion")));
+                }
+                assert_eq!(serde_json::to_value(&settings).unwrap(), before);
+            }
+        }
+    }
 }
 
 #[test]
@@ -361,8 +428,11 @@ fn selected_mode_prompt_counts_toward_the_context_limit() {
         }],
         ..Settings::default()
     };
-    let prompt = "x".repeat(MAX_CONTEXT_BYTES - settings.system_prompt.len());
+    let baseline = assist_body(&settings, "Question", "", &[], None).unwrap();
+    let instructions_len = baseline["messages"][0]["content"].as_str().unwrap().len();
+    let prompt = "x".repeat(MAX_CONTEXT_BYTES - instructions_len);
     assert!(assist_body(&settings, &prompt, "", &[], None).is_ok());
+    assert!(assist_body(&settings, &(prompt.clone() + "x"), "", &[], None).is_err());
     settings.active_mode_id = "custom".into();
     assert!(
         assist_body(&settings, &prompt, "", &[], None)

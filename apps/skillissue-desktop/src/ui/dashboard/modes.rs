@@ -16,12 +16,15 @@ fn mode_templates() -> Vec<ModeTemplate> {
             description: "Keep decisions, open questions and next steps together.",
             color: 0x10b98123,
             icon: Glyph::Users,
-            prompt: "Help me follow the conversation. Distinguish decisions from proposals, identify open questions, and preserve who owns each next step. Base answers on the available transcript and documents.",
+            prompt: "Help me follow the conversation. Distinguish decisions from proposals, identify open questions, and preserve who owns each next step. Base answers on the available transcript and documents. Give the shortest complete answer. When asked for a conclusion, state what was agreed and the next action, or say that no decision was recorded. Avoid a generic meeting recap.",
             sections: vec![
-                ("Decisions", "Decisions agreed during the conversation."),
+                (
+                    "Decisions",
+                    "State each agreed decision directly with its evidence. Keep proposals separate; say when no decision was recorded.",
+                ),
                 (
                     "Next steps",
-                    "Actions with an owner and due date when stated.",
+                    "List concrete actions with an owner, due date and evidence when stated. Do not invent commitments or add motivational closing lines.",
                 ),
                 ("Open questions", "Questions that remain unresolved."),
             ],
@@ -31,16 +34,19 @@ fn mode_templates() -> Vec<ModeTemplate> {
             description: "Review practice answers and identify useful improvements.",
             color: 0x3b82f623,
             icon: Glyph::BriefcaseBusiness,
-            prompt: "Act as a practice interview coach. Help me structure my own examples clearly, explain technical concepts, and identify gaps to work on. Do not invent experience or qualifications.",
+            prompt: "Act as a practice interview coach. Help me structure my own examples clearly, explain technical concepts, and identify gaps to work on. Do not invent experience or qualifications. Preserve my natural wording when improving an answer. Give specific feedback tied to the answer and one useful next exercise, without generic praise or a motivational conclusion.",
             sections: vec![
                 (
                     "Topics",
                     "Questions and concepts covered in the practice session.",
                 ),
-                ("Feedback", "Specific strengths and areas to improve."),
+                (
+                    "Feedback",
+                    "Tie each strength or improvement to a specific answer. Preserve the speaker's voice; avoid generic praise and invented qualifications.",
+                ),
                 (
                     "Practice plan",
-                    "Concrete exercises to prepare for the next session.",
+                    "Prioritize concrete exercises for the observed gaps. Keep the plan short and end with the next exercise.",
                 ),
             ],
         },
@@ -49,13 +55,16 @@ fn mode_templates() -> Vec<ModeTemplate> {
             description: "Track design tradeoffs, risks and follow-up work.",
             color: 0xa855f723,
             icon: Glyph::Code,
-            prompt: "Help me review the technical discussion. State assumptions, explain design tradeoffs, and separate demonstrated behavior from hypotheses. Suggest focused validation for unresolved risks.",
+            prompt: "Help me review the technical discussion. State assumptions, explain design tradeoffs, and separate demonstrated behavior from hypotheses. Suggest focused validation for unresolved risks. Prefer the simplest design that meets the stated constraints. Keep necessary technical detail. If asked for a conclusion, give the supported recommendation, unresolved constraint and next check without repeating the review.",
             sections: vec![
                 ("Design", "The proposed architecture and its constraints."),
-                ("Tradeoffs", "Alternatives considered and reasons given."),
+                (
+                    "Tradeoffs",
+                    "Record alternatives considered, concrete constraints and reasons given. Prefer plain comparisons over claims that a design is modern or powerful.",
+                ),
                 (
                     "Validation",
-                    "Checks or experiments needed to resolve uncertainty.",
+                    "Name the smallest checks needed to resolve each uncertainty and what result would support the decision. End with the next check, not a recap.",
                 ),
             ],
         },

@@ -980,6 +980,12 @@ async fn saved_questions_use_only_selected_evidence_and_preserve_other_live_cont
     assert!(payload_text.contains("Selected planning session"));
     assert!(payload_text.contains("SELECTED-EVIDENCE"));
     assert!(payload_text.contains("SELECTED-NOTES"));
+    assert!(
+        payload["messages"][0]["content"]
+            .as_str()
+            .unwrap()
+            .ends_with(skillissue_domain::models::RESPONSE_STYLE)
+    );
     for excluded in [
         "OTHER-LIVE-PRIVATE",
         "PRIVATE-GENERAL-INSTRUCTIONS",

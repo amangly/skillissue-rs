@@ -63,6 +63,12 @@ without cancelling accepted transcription jobs. Provider requests retain their
 own timeouts; reference search has a separate ten-second timeout.
 Only the configured Audio adapter receives raw audio.
 
+All answer paths append the shared KISS/no-ai-slop policy after mode instructions.
+It applies to existing custom modes, screenshots, saved-session answers and notes
+without rewriting saved prompts. The request budget includes these instructions.
+See [output style](output-style.md) for tone, conclusion behavior and evaluation
+cases. Audio transcription is unchanged.
+
 Generated notes request transcript citations such as `[T1]`, with action owner
 and due date left unknown unless stated. Out-of-range citations reject the
 generated result. Notes show buttons that open the cited excerpt, and Markdown
