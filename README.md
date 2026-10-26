@@ -33,6 +33,10 @@ Palepale rows use your connected account; other providers use your saved API key
 Compare input, cached input, and output rates on [Palepale](https://palepale.tech/),
 or explore its plans. Provider usage costs apply.
 
+## Demo
+
+https://github.com/user-attachments/assets/cc7190e6-d127-427a-aa23-1384360eb690
+
 ## Why I built this
 
 I built this for people with skill issues. Like me.
