@@ -35,7 +35,7 @@ or explore its plans. Provider usage costs apply.
 
 ## Demo
 
-https://github.com/user-attachments/assets/cc7190e6-d127-427a-aa23-1384360eb690
+https://github.com/amangly/skillissue-rs/releases/download/v0.1.2/skillissue-demo.mp4
 
 ## Why I built this
 
